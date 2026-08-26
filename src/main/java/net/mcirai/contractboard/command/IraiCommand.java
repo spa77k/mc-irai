@@ -6,12 +6,17 @@ import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
-public class IraiCommand implements CommandExecutor {
+public class IraiCommand implements CommandExecutor, TabCompleter {
+
+    private static final List<String> SUBCOMMANDS = List.of("create", "list", "my", "cancel");
 
     private final GuiManager guiManager;
     private final SessionManager sessionManager;
@@ -58,5 +63,21 @@ public class IraiCommand implements CommandExecutor {
             default -> messages.send(player, "unknown-subcommand");
         }
         return true;
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length != 1) {
+            return List.of();
+        }
+
+        String prefix = args[0].toLowerCase();
+        List<String> matches = new ArrayList<>();
+        for (String subcommand : SUBCOMMANDS) {
+            if (subcommand.startsWith(prefix)) {
+                matches.add(subcommand);
+            }
+        }
+        return matches;
     }
 }
