@@ -6,7 +6,8 @@ public class CreateRequestSession {
         TITLE,
         DESCRIPTION,
         REWARD,
-        EXPIRE
+        EXPIRE,
+        MIN_STARS
     }
 
     private Step step = Step.TITLE;
@@ -14,6 +15,7 @@ public class CreateRequestSession {
     private String description;
     private double reward;
     private int expireHours;
+    private int minStars;
 
     public Step getStep() {
         return step;
@@ -53,5 +55,13 @@ public class CreateRequestSession {
 
     public void setExpireHours(int expireHours) {
         this.expireHours = expireHours;
+    }
+
+    public int getMinStars() {
+        return minStars;
+    }
+
+    public void setMinStars(int minStars) {
+        this.minStars = minStars;
     }
 }

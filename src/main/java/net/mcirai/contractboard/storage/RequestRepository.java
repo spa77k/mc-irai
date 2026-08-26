@@ -21,11 +21,11 @@ public class RequestRepository {
     }
 
     public Request insert(UUID requesterId, String requesterName, String title, String description,
-                           double reward, long createdAt, long expiresAt) throws SQLException {
+                           double reward, long createdAt, long expiresAt, int minStars) throws SQLException {
         String sql = """
             INSERT INTO requests (requester_id, requester_name, title, description, reward,
-                created_at, expires_at, status, rated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                created_at, expires_at, status, rated, min_stars)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             """;
         Connection connection = database.getConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -37,12 +37,13 @@ public class RequestRepository {
             statement.setLong(6, createdAt);
             statement.setLong(7, expiresAt);
             statement.setString(8, RequestStatus.OPEN.name());
+            statement.setInt(9, minStars);
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 keys.next();
                 int id = keys.getInt(1);
                 return new Request(id, requesterId, requesterName, title, description, reward,
-                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false, 0, 0, false);
+                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false, 0, 0, false, minStars);
             }
         }
     }
@@ -309,7 +310,8 @@ public class RequestRepository {
                 rs.getInt("rated") == 1,
                 rs.getLong("accepted_at"),
                 rs.getLong("delivered_at"),
-                rs.getInt("reminder_sent") == 1
+                rs.getInt("reminder_sent") == 1,
+                rs.getInt("min_stars")
         );
     }
 }

@@ -22,6 +22,8 @@ request:
   reminder-hours-before: 24
   # 完了・取り下げ・期限切れになった依頼を、何日後にデータベースから完全削除するか。0以下で無効化(削除しない)。
   retention-days: 30
+  # 依頼作成時に設定できる「受注に必要な最低星数」の上限(0〜この値)。0を指定すると条件なし。
+  min-stars-max: 5
 
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
@@ -51,6 +53,8 @@ messages:
     invalid-reward: "&c報酬額は{min}〜{max}の整数で入力してください。"
     ask-expire: "&a期限を時間単位の数値で入力してください。({min}〜{max}時間)"
     invalid-expire: "&c期限は{min}〜{max}の整数(時間)で入力してください。"
+    ask-min-stars: "&a受注に必要な最低星数を入力してください。(0〜{max}、条件なしは0またはそのままEnter)"
+    invalid-min-stars: "&c最低星数は0〜{max}の整数で入力してください。"
     insufficient-funds: "&c所持金が足りません。必要額: {amount}(報酬{reward}+手数料{fee})"
     completed: "&a依頼「{title}」を作成しました。報酬{reward}+手数料{fee}=合計{amount}を徴収し、報酬分を依頼所に預けました。"
     cancelled-input: "&e依頼作成をキャンセルしました。"
@@ -63,6 +67,7 @@ messages:
     already-accepted-by-you: "&cすでに1件受注中のため、新しい依頼は受けられません。"
     already-taken: "&cこの依頼はすでに他のプレイヤーが受注しています。"
     own-request: "&c自分の依頼は受注できません。"
+    stars-too-low: "&cこの依頼を受注するには平均評価が★{min}以上必要です。"
     success: "&a依頼「{title}」を受注しました。"
 
   giveup:

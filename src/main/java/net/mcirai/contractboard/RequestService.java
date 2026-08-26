@@ -39,7 +39,7 @@ public class RequestService {
     }
 
     public boolean createRequest(Player requester, String title, String description,
-                                  double reward, int expireHours) {
+                                  double reward, int expireHours, int minStars) {
         if (!economyService.isReady()) {
             messages.send(requester, "economy-not-found");
             return false;
@@ -68,7 +68,7 @@ public class RequestService {
         long expiresAt = now + expireHours * 3_600_000L;
         try {
             requestRepository.insert(requester.getUniqueId(), requester.getName(),
-                    title, description, reward, now, expiresAt);
+                    title, description, reward, now, expiresAt, minStars);
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の作成に失敗しました", e);
             economyService.deposit(requester, total);
@@ -93,6 +93,17 @@ public class RequestService {
         }
         if (request.getRequesterId().equals(worker.getUniqueId())) {
             messages.send(worker, "accept.own-request");
+            return;
+        }
+        try {
+            if (request.getMinStars() > 0 && ratingRepository.countByRated(worker.getUniqueId()) > 0
+                    && ratingRepository.averageStars(worker.getUniqueId()) < request.getMinStars()) {
+                messages.send(worker, "accept.stars-too-low",
+                        Map.of("min", String.valueOf(request.getMinStars())));
+                return;
+            }
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "評価情報の取得に失敗しました", e);
             return;
         }
         try {

@@ -19,11 +19,12 @@ public class Request {
     private long acceptedAt;
     private long deliveredAt;
     private boolean reminderSent;
+    private final int minStars;
 
     public Request(int id, UUID requesterId, String requesterName, String title, String description,
                     double reward, long createdAt, long expiresAt, RequestStatus status,
                     UUID workerId, String workerName, boolean rated,
-                    long acceptedAt, long deliveredAt, boolean reminderSent) {
+                    long acceptedAt, long deliveredAt, boolean reminderSent, int minStars) {
         this.id = id;
         this.requesterId = requesterId;
         this.requesterName = requesterName;
@@ -39,6 +40,7 @@ public class Request {
         this.acceptedAt = acceptedAt;
         this.deliveredAt = deliveredAt;
         this.reminderSent = reminderSent;
+        this.minStars = minStars;
     }
 
     public int getId() {
@@ -131,5 +133,9 @@ public class Request {
 
     public void setReminderSent(boolean reminderSent) {
         this.reminderSent = reminderSent;
+    }
+
+    public int getMinStars() {
+        return minStars;
     }
 }

@@ -54,6 +54,7 @@ public class ChatInputListener implements Listener {
         double maxReward = config.getDouble("request.max-reward", 1_000_000);
         int minExpire = config.getInt("request.min-expire-hours", 1);
         int maxExpire = config.getInt("request.max-expire-hours", 168);
+        int maxMinStars = config.getInt("request.min-stars-max", 5);
 
         switch (session.getStep()) {
             case TITLE -> {
@@ -118,9 +119,29 @@ public class ChatInputListener implements Listener {
                     return;
                 }
                 session.setExpireHours(hours);
+                session.setStep(CreateRequestSession.Step.MIN_STARS);
+                messages.send(player, "create.ask-min-stars", Map.of("max", String.valueOf(maxMinStars)));
+            }
+            case MIN_STARS -> {
+                int minStars;
+                if (input.isEmpty() || input.equals("なし") || input.equals("0")) {
+                    minStars = 0;
+                } else {
+                    try {
+                        minStars = Integer.parseInt(input);
+                    } catch (NumberFormatException e) {
+                        messages.send(player, "create.invalid-min-stars", Map.of("max", String.valueOf(maxMinStars)));
+                        return;
+                    }
+                }
+                if (minStars < 0 || minStars > maxMinStars) {
+                    messages.send(player, "create.invalid-min-stars", Map.of("max", String.valueOf(maxMinStars)));
+                    return;
+                }
+                session.setMinStars(minStars);
                 sessionManager.end(player.getUniqueId());
                 requestService.createRequest(player, session.getTitle(), session.getDescription(),
-                        session.getReward(), hours);
+                        session.getReward(), session.getExpireHours(), minStars);
             }
         }
     }

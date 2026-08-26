@@ -90,7 +90,7 @@ public class GuiManager {
         for (int i = from; i < to; i++) {
             Request request = open.get(i);
             int slot = i - from;
-            inventory.setItem(slot, buildRequestItem(request));
+            inventory.setItem(slot, buildRequestItem(request, player));
             holder.getSlotToRequestId().put(slot, request.getId());
         }
 
@@ -112,19 +112,38 @@ public class GuiManager {
         player.openInventory(inventory);
     }
 
-    private ItemStack buildRequestItem(Request request) {
+    private ItemStack buildRequestItem(Request request, Player viewer) {
+        boolean eligible = meetsMinStars(request, viewer);
         List<String> lore = new ArrayList<>();
         lore.add("§7依頼者: §f" + request.getRequesterName());
         lore.add("§7報酬: §e" + economyService.format(request.getReward()));
         lore.add("§7期限: §f" + dateFormat.format(new Date(request.getExpiresAt())));
+        if (request.getMinStars() > 0) {
+            lore.add((eligible ? "§7" : "§c") + "受注条件: ★" + request.getMinStars() + "以上");
+        }
         lore.add("");
         lore.add(trim(request.getDescription(), 30));
         lore.add("");
         lore.add("§eクリックで詳細を見る");
         return new ItemBuilder(Material.PAPER)
-                .name("§f" + request.getTitle())
+                .name((eligible ? "§f" : "§8") + request.getTitle())
                 .lore(lore)
                 .build();
+    }
+
+    private boolean meetsMinStars(Request request, Player viewer) {
+        if (request.getMinStars() <= 0) {
+            return true;
+        }
+        try {
+            if (ratingRepository.countByRated(viewer.getUniqueId()) == 0) {
+                return true;
+            }
+            return ratingRepository.averageStars(viewer.getUniqueId()) >= request.getMinStars();
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "評価情報の取得に失敗しました", e);
+            return true;
+        }
     }
 
     public void openRequestDetail(Player player, int requestId, boolean fromList) {
@@ -144,20 +163,16 @@ public class GuiManager {
         Inventory inventory = Bukkit.createInventory(holder, 27, messages.get("gui.detail-title"));
         holder.setInventory(inventory);
 
-        double avg = 0;
-        int count = 0;
-        try {
-            avg = ratingRepository.averageStars(request.getRequesterId());
-            count = ratingRepository.countByRated(request.getRequesterId());
-        } catch (SQLException e) {
-            logger.log(Level.WARNING, "評価情報の取得に失敗しました", e);
-        }
+        boolean eligible = meetsMinStars(request, player);
 
         List<String> lore = new ArrayList<>();
         lore.add("§7依頼者: §f" + request.getRequesterName());
         lore.add("§7報酬: §e" + economyService.format(request.getReward()));
         lore.add("§7期限: §f" + dateFormat.format(new Date(request.getExpiresAt())));
         lore.add("§7状態: §f" + statusLabel(request.getStatus()));
+        if (request.getMinStars() > 0) {
+            lore.add((eligible ? "§7" : "§c") + "受注条件: ★" + request.getMinStars() + "以上");
+        }
         if (request.getWorkerName() != null) {
             lore.add("§7受注者: §f" + request.getWorkerName());
         }
@@ -170,9 +185,13 @@ public class GuiManager {
                 .build());
 
         boolean isOwn = request.getRequesterId().equals(player.getUniqueId());
-        if (request.getStatus() == RequestStatus.OPEN && !isOwn) {
+        if (request.getStatus() == RequestStatus.OPEN && !isOwn && eligible) {
             inventory.setItem(RequestDetailHolder.SLOT_ACCEPT, new ItemBuilder(Material.LIME_WOOL)
                     .name("§aこの依頼を受注する")
+                    .build());
+        } else if (request.getStatus() == RequestStatus.OPEN && !isOwn) {
+            inventory.setItem(RequestDetailHolder.SLOT_ACCEPT, new ItemBuilder(Material.RED_WOOL)
+                    .name("§c受注条件を満たしていません(★" + request.getMinStars() + "以上必要)")
                     .build());
         }
 
