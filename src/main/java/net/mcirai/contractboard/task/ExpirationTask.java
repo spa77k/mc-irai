@@ -14,5 +14,6 @@ public class ExpirationTask extends BukkitRunnable {
     @Override
     public void run() {
         requestService.processExpired();
+        requestService.processAcceptedTimeouts();
     }
 }

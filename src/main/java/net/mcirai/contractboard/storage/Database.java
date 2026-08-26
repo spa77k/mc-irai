@@ -5,6 +5,7 @@ import org.bukkit.plugin.Plugin;
 import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
@@ -42,7 +43,10 @@ public class Database {
                     status TEXT NOT NULL,
                     worker_id TEXT,
                     worker_name TEXT,
-                    rated INTEGER NOT NULL DEFAULT 0
+                    rated INTEGER NOT NULL DEFAULT 0,
+                    accepted_at INTEGER,
+                    delivered_at INTEGER,
+                    reminder_sent INTEGER NOT NULL DEFAULT 0
                 )
                 """);
             statement.execute("""
@@ -56,6 +60,23 @@ public class Database {
                     created_at INTEGER NOT NULL
                 )
                 """);
+        }
+        ensureColumn("requests", "accepted_at", "INTEGER");
+        ensureColumn("requests", "delivered_at", "INTEGER");
+        ensureColumn("requests", "reminder_sent", "INTEGER NOT NULL DEFAULT 0");
+    }
+
+    private void ensureColumn(String table, String column, String definition) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rs = statement.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (rs.getString("name").equalsIgnoreCase(column)) {
+                    return;
+                }
+            }
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
         }
     }
 

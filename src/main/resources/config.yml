@@ -14,6 +14,12 @@ request:
   # 依頼作成時に報酬へ上乗せする手数料率(0.05 = 5%)。徴収した手数料は消滅する。
   # 依頼が取り下げ・期限切れになった場合も手数料分は返還されない。
   fee-rate: 0.05
+  # 受注済み(ACCEPTED)・納品報告済み(DELIVERED)の依頼が放置された場合の猶予時間(時間単位)。
+  # ・納品報告後、依頼者が完了承認しないまま経過した場合: 自動的に受注者へ支払われる
+  # ・受注後、受注者が納品報告もギブアップもしないまま経過した場合: 依頼者が強制的に募集中へ差し戻せるようになる
+  auto-approve-hours: 72
+  # 上記の何時間前に、当事者へ事前リマインドを送るか
+  reminder-hours-before: 24
 
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
@@ -67,6 +73,22 @@ messages:
   withdraw:
     success: "&e依頼「{title}」を取り下げ、報酬{amount}を返還しました。"
     already-accepted: "&c受注済みの依頼は取り下げできません。"
+
+  deliver:
+    success: "&a依頼「{title}」の納品完了を報告しました。依頼者の承認をお待ちください。"
+    not-accepted: "&cこの依頼は受注中ではありません。"
+    notify-requester: "&a{worker}が依頼「{title}」の納品完了を報告しました。内容を確認し、GUIから完了承認をしてください。"
+
+  auto-approve:
+    notify-requester: "&e依頼「{title}」は納品報告から一定時間が経過したため、自動的に完了承認され{worker}に{amount}を支払いました。"
+    notify-worker: "&a依頼「{title}」が自動承認され、{amount}が支払われました。"
+    reminder-requester: "&e依頼「{title}」は納品報告済みです。あと{hours}時間確認がない場合、自動的に承認され報酬が支払われます。"
+
+  force-revert:
+    success: "&e依頼「{title}」の受注を強制的に取り消し、募集中に戻しました。"
+    not-eligible: "&cまだ強制的に差し戻せる時間になっていません。"
+    notify-worker: "&c依頼者により依頼「{title}」の受注が取り消されました。"
+    reminder-worker: "&e依頼「{title}」は受注から時間が経過しています。あと{hours}時間、納品報告もギブアップもない場合、依頼者が受注を取り消せるようになります。"
 
   expire:
     notify-requester: "&e依頼「{title}」が期限切れになり、報酬{amount}を返還しました。"

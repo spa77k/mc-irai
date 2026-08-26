@@ -45,7 +45,7 @@ public class ContractBoardPlugin extends JavaPlugin {
         RequestService requestService = new RequestService(requestRepository, ratingRepository,
                 economyService, messages, getConfig(), getLogger());
         GuiManager guiManager = new GuiManager(requestRepository, ratingRepository,
-                economyService, messages, getLogger());
+                economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();
 
         getCommand("irai").setExecutor(new IraiCommand(guiManager, sessionManager, messages));

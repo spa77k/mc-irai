@@ -9,6 +9,7 @@ import net.mcirai.contractboard.util.ItemBuilder;
 import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -32,14 +33,17 @@ public class GuiManager {
     private final RatingRepository ratingRepository;
     private final EconomyService economyService;
     private final MessageUtil messages;
+    private final FileConfiguration config;
     private final Logger logger;
 
     public GuiManager(RequestRepository requestRepository, RatingRepository ratingRepository,
-                       EconomyService economyService, MessageUtil messages, Logger logger) {
+                       EconomyService economyService, MessageUtil messages, FileConfiguration config,
+                       Logger logger) {
         this.requestRepository = requestRepository;
         this.ratingRepository = ratingRepository;
         this.economyService = economyService;
         this.messages = messages;
+        this.config = config;
         this.logger = logger;
     }
 
@@ -196,6 +200,9 @@ public class GuiManager {
         Inventory inventory = Bukkit.createInventory(holder, 54, messages.get("gui.my-requests-title"));
         holder.setInventory(inventory);
 
+        long autoApproveMillis = config.getLong("request.auto-approve-hours", 72) * 3_600_000L;
+        long now = System.currentTimeMillis();
+
         int slot = 0;
         if (!mine.isEmpty()) {
             inventory.setItem(slot++, new ItemBuilder(Material.ORANGE_STAINED_GLASS_PANE)
@@ -203,13 +210,22 @@ public class GuiManager {
             for (Request request : mine) {
                 if (slot >= 44) break;
                 int action = switch (request.getStatus()) {
-                    case ACCEPTED -> 1;
+                    case ACCEPTED, DELIVERED -> 1;
                     case OPEN -> 2;
                     default -> 0;
                 };
                 inventory.setItem(slot, buildMyRequestItem(request, action));
                 holder.getSlotActions().put(slot, new int[]{request.getId(), action});
                 slot++;
+
+                boolean forceRevertEligible = request.getStatus() == RequestStatus.ACCEPTED
+                        && request.getAcceptedAt() > 0
+                        && now - request.getAcceptedAt() >= autoApproveMillis;
+                if (forceRevertEligible && slot < 44) {
+                    inventory.setItem(slot, buildMyRequestItem(request, 5));
+                    holder.getSlotActions().put(slot, new int[]{request.getId(), 5});
+                    slot++;
+                }
             }
         }
         if (!accepted.isEmpty()) {
@@ -217,10 +233,20 @@ public class GuiManager {
                     .name("§b―― 自分が受注した依頼 ――").build());
             for (Request request : accepted) {
                 if (slot >= 44) break;
-                int action = request.getStatus() == RequestStatus.ACCEPTED ? 3 : 0;
-                inventory.setItem(slot, buildMyRequestItem(request, action));
-                holder.getSlotActions().put(slot, new int[]{request.getId(), action});
-                slot++;
+                if (request.getStatus() == RequestStatus.ACCEPTED) {
+                    inventory.setItem(slot, buildMyRequestItem(request, 4));
+                    holder.getSlotActions().put(slot, new int[]{request.getId(), 4});
+                    slot++;
+                    if (slot < 44) {
+                        inventory.setItem(slot, buildMyRequestItem(request, 3));
+                        holder.getSlotActions().put(slot, new int[]{request.getId(), 3});
+                        slot++;
+                    }
+                } else {
+                    inventory.setItem(slot, buildMyRequestItem(request, 0));
+                    holder.getSlotActions().put(slot, new int[]{request.getId(), 0});
+                    slot++;
+                }
             }
         }
 
@@ -250,7 +276,16 @@ public class GuiManager {
             }
             case 3 -> {
                 material = Material.YELLOW_DYE;
-                lore.add("§eクリックで受注を取り消す");
+                lore.add("§eクリックで受注を取り消す(ギブアップ)");
+            }
+            case 4 -> {
+                material = Material.LIME_DYE;
+                lore.add("§aクリックで納品完了を報告");
+            }
+            case 5 -> {
+                material = Material.RED_DYE;
+                lore.add("§c放置されています");
+                lore.add("§cクリックで強制的に募集中へ差し戻す");
             }
             default -> lore.add("§7(操作なし)");
         }
@@ -282,6 +317,7 @@ public class GuiManager {
         return switch (status) {
             case OPEN -> "§a募集中";
             case ACCEPTED -> "§e受注中";
+            case DELIVERED -> "§6納品報告済み(承認待ち)";
             case COMPLETED -> "§b完了";
             case EXPIRED -> "§7期限切れ";
             case WITHDRAWN -> "§7取り下げ済み";

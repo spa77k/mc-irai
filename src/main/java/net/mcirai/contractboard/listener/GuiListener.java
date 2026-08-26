@@ -135,6 +135,14 @@ public class GuiListener implements Listener {
                 requestService.giveUpRequest(player, requestId);
                 guiManager.openMyRequests(player);
             }
+            case 4 -> {
+                requestService.markDelivered(player, requestId);
+                guiManager.openMyRequests(player);
+            }
+            case 5 -> {
+                requestService.forceRevert(player, requestId);
+                guiManager.openMyRequests(player);
+            }
             default -> {
             }
         }

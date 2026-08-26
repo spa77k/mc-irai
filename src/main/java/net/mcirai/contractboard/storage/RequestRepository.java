@@ -42,7 +42,7 @@ public class RequestRepository {
                 keys.next();
                 int id = keys.getInt(1);
                 return new Request(id, requesterId, requesterName, title, description, reward,
-                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false);
+                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false, 0, 0, false);
             }
         }
     }
@@ -117,33 +117,156 @@ public class RequestRepository {
         return result;
     }
 
-    public void updateStatus(int id, RequestStatus status) throws SQLException {
-        String sql = "UPDATE requests SET status = ? WHERE id = ?";
-        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
-            statement.setString(1, status.name());
-            statement.setInt(2, id);
-            statement.executeUpdate();
-        }
-    }
-
-    public void assignWorker(int id, UUID workerId, String workerName) throws SQLException {
-        String sql = "UPDATE requests SET worker_id = ?, worker_name = ?, status = ? WHERE id = ?";
+    public void assignWorker(int id, UUID workerId, String workerName, long acceptedAt) throws SQLException {
+        String sql = """
+            UPDATE requests SET worker_id = ?, worker_name = ?, status = ?,
+                accepted_at = ?, delivered_at = NULL, reminder_sent = 0
+            WHERE id = ?
+            """;
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, workerId.toString());
             statement.setString(2, workerName);
             statement.setString(3, RequestStatus.ACCEPTED.name());
-            statement.setInt(4, id);
+            statement.setLong(4, acceptedAt);
+            statement.setInt(5, id);
             statement.executeUpdate();
         }
     }
 
     public void clearWorker(int id) throws SQLException {
-        String sql = "UPDATE requests SET worker_id = NULL, worker_name = NULL, status = ? WHERE id = ?";
+        String sql = """
+            UPDATE requests SET worker_id = NULL, worker_name = NULL, status = ?,
+                accepted_at = NULL, delivered_at = NULL, reminder_sent = 0
+            WHERE id = ?
+            """;
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, RequestStatus.OPEN.name());
             statement.setInt(2, id);
             statement.executeUpdate();
         }
+    }
+
+    public boolean markDelivered(int id, long deliveredAt) throws SQLException {
+        String sql = """
+            UPDATE requests SET status = ?, delivered_at = ?, reminder_sent = 0
+            WHERE id = ? AND status = ?
+            """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.DELIVERED.name());
+            statement.setLong(2, deliveredAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.ACCEPTED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean forceRevert(int id, long acceptedBefore) throws SQLException {
+        String sql = """
+            UPDATE requests SET worker_id = NULL, worker_name = NULL, status = ?,
+                accepted_at = NULL, delivered_at = NULL, reminder_sent = 0
+            WHERE id = ? AND status = ? AND accepted_at <= ?
+            """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.OPEN.name());
+            statement.setInt(2, id);
+            statement.setString(3, RequestStatus.ACCEPTED.name());
+            statement.setLong(4, acceptedBefore);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean markExpired(int id) throws SQLException {
+        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.EXPIRED.name());
+            statement.setInt(2, id);
+            statement.setString(3, RequestStatus.OPEN.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean markCompleted(int id) throws SQLException {
+        String sql = "UPDATE requests SET status = ? WHERE id = ? AND (status = ? OR status = ?)";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.COMPLETED.name());
+            statement.setInt(2, id);
+            statement.setString(3, RequestStatus.ACCEPTED.name());
+            statement.setString(4, RequestStatus.DELIVERED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean markWithdrawn(int id) throws SQLException {
+        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.WITHDRAWN.name());
+            statement.setInt(2, id);
+            statement.setString(3, RequestStatus.OPEN.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean autoApprove(int id) throws SQLException {
+        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.COMPLETED.name());
+            statement.setInt(2, id);
+            statement.setString(3, RequestStatus.DELIVERED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public void markReminderSent(int id) throws SQLException {
+        String sql = "UPDATE requests SET reminder_sent = 1 WHERE id = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setInt(1, id);
+            statement.executeUpdate();
+        }
+    }
+
+    public List<Request> findStaleDelivered(long deliveredBefore) throws SQLException {
+        String sql = "SELECT * FROM requests WHERE status = ? AND delivered_at <= ?";
+        List<Request> result = new ArrayList<>();
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.DELIVERED.name());
+            statement.setLong(2, deliveredBefore);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(map(rs));
+                }
+            }
+        }
+        return result;
+    }
+
+    public List<Request> findDeliveredNeedingReminder(long deliveredBefore) throws SQLException {
+        String sql = "SELECT * FROM requests WHERE status = ? AND reminder_sent = 0 AND delivered_at <= ?";
+        List<Request> result = new ArrayList<>();
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.DELIVERED.name());
+            statement.setLong(2, deliveredBefore);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(map(rs));
+                }
+            }
+        }
+        return result;
+    }
+
+    public List<Request> findAcceptedNeedingReminder(long acceptedBefore) throws SQLException {
+        String sql = "SELECT * FROM requests WHERE status = ? AND reminder_sent = 0 AND accepted_at <= ?";
+        List<Request> result = new ArrayList<>();
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.ACCEPTED.name());
+            statement.setLong(2, acceptedBefore);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(map(rs));
+                }
+            }
+        }
+        return result;
     }
 
     public void markRated(int id) throws SQLException {
@@ -168,7 +291,10 @@ public class RequestRepository {
                 RequestStatus.valueOf(rs.getString("status")),
                 workerIdStr == null ? null : UUID.fromString(workerIdStr),
                 rs.getString("worker_name"),
-                rs.getInt("rated") == 1
+                rs.getInt("rated") == 1,
+                rs.getLong("accepted_at"),
+                rs.getLong("delivered_at"),
+                rs.getInt("reminder_sent") == 1
         );
     }
 }

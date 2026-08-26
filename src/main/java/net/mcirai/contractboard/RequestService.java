@@ -103,7 +103,8 @@ public class RequestService {
                 messages.send(worker, "accept.already-accepted-by-you");
                 return;
             }
-            requestRepository.assignWorker(requestId, worker.getUniqueId(), worker.getName());
+            requestRepository.assignWorker(requestId, worker.getUniqueId(), worker.getName(),
+                    System.currentTimeMillis());
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の受注に失敗しました", e);
             return;
@@ -126,21 +127,80 @@ public class RequestService {
         messages.send(worker, "giveup.success", Map.of("title", request.getTitle()));
     }
 
-    public boolean completeRequest(Player requester, int requestId) {
+    public void markDelivered(Player worker, int requestId) {
         Request request = findOrNull(requestId);
         if (request == null || request.getStatus() != RequestStatus.ACCEPTED
+                || !worker.getUniqueId().equals(request.getWorkerId())) {
+            messages.send(worker, "deliver.not-accepted");
+            return;
+        }
+        boolean success;
+        try {
+            success = requestRepository.markDelivered(requestId, System.currentTimeMillis());
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "納品報告に失敗しました", e);
+            return;
+        }
+        if (!success) {
+            messages.send(worker, "deliver.not-accepted");
+            return;
+        }
+        messages.send(worker, "deliver.success", Map.of("title", request.getTitle()));
+        Player requesterPlayer = org.bukkit.Bukkit.getPlayer(request.getRequesterId());
+        if (requesterPlayer != null) {
+            messages.send(requesterPlayer, "deliver.notify-requester",
+                    Map.of("title", request.getTitle(), "worker", worker.getName()));
+        }
+    }
+
+    public void forceRevert(Player requester, int requestId) {
+        Request request = findOrNull(requestId);
+        if (request == null || request.getStatus() != RequestStatus.ACCEPTED
+                || !requester.getUniqueId().equals(request.getRequesterId())) {
+            return;
+        }
+        long autoApproveMillis = config.getLong("request.auto-approve-hours", 72) * 3_600_000L;
+        long threshold = System.currentTimeMillis() - autoApproveMillis;
+        boolean success;
+        try {
+            success = requestRepository.forceRevert(requestId, threshold);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "強制差し戻しに失敗しました", e);
+            return;
+        }
+        if (!success) {
+            messages.send(requester, "force-revert.not-eligible");
+            return;
+        }
+        messages.send(requester, "force-revert.success", Map.of("title", request.getTitle()));
+        Player workerPlayer = org.bukkit.Bukkit.getPlayer(request.getWorkerId());
+        if (workerPlayer != null) {
+            messages.send(workerPlayer, "force-revert.notify-worker", Map.of("title", request.getTitle()));
+        }
+    }
+
+    public boolean completeRequest(Player requester, int requestId) {
+        Request request = findOrNull(requestId);
+        if (request == null
+                || (request.getStatus() != RequestStatus.ACCEPTED && request.getStatus() != RequestStatus.DELIVERED)
                 || !requester.getUniqueId().equals(request.getRequesterId())) {
             messages.send(requester, "complete.not-accepted");
             return false;
         }
-        if (!economyService.deposit(org.bukkit.Bukkit.getOfflinePlayer(request.getWorkerId()), request.getReward())) {
-            requester.sendMessage(messages.get("prefix") + "§c報酬の支払いに失敗しました。");
-            return false;
-        }
+        boolean statusUpdated;
         try {
-            requestRepository.updateStatus(requestId, RequestStatus.COMPLETED);
+            statusUpdated = requestRepository.markCompleted(requestId);
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の完了処理に失敗しました", e);
+            return false;
+        }
+        if (!statusUpdated) {
+            // 既に他の操作で状態が変わっている(二重クリック等)。入金前なので何もせず終了する。
+            messages.send(requester, "complete.not-accepted");
+            return false;
+        }
+        if (!economyService.deposit(org.bukkit.Bukkit.getOfflinePlayer(request.getWorkerId()), request.getReward())) {
+            requester.sendMessage(messages.get("prefix") + "§c報酬の支払いに失敗しました。管理者に連絡してください。");
             return false;
         }
         Map<String, String> placeholders = new HashMap<>();
@@ -160,13 +220,19 @@ public class RequestService {
             messages.send(requester, "withdraw.already-accepted");
             return;
         }
-        economyService.deposit(requester, request.getReward());
+        boolean statusUpdated;
         try {
-            requestRepository.updateStatus(requestId, RequestStatus.WITHDRAWN);
+            statusUpdated = requestRepository.markWithdrawn(requestId);
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の取り下げに失敗しました", e);
             return;
         }
+        if (!statusUpdated) {
+            // 既に他の操作で状態が変わっている(二重クリック等)。返金前なので何もせず終了する。
+            messages.send(requester, "withdraw.already-accepted");
+            return;
+        }
+        economyService.deposit(requester, request.getReward());
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("title", request.getTitle());
         placeholders.put("amount", economyService.format(request.getReward()));
@@ -207,11 +273,19 @@ public class RequestService {
             return;
         }
         for (Request request : expired) {
-            economyService.deposit(org.bukkit.Bukkit.getOfflinePlayer(request.getRequesterId()), request.getReward());
+            boolean statusUpdated;
             try {
-                requestRepository.updateStatus(request.getId(), RequestStatus.EXPIRED);
+                statusUpdated = requestRepository.markExpired(request.getId());
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "依頼の失効処理に失敗しました", e);
+                continue;
+            }
+            if (!statusUpdated) {
+                continue;
+            }
+            if (!economyService.deposit(
+                    org.bukkit.Bukkit.getOfflinePlayer(request.getRequesterId()), request.getReward())) {
+                logger.warning("依頼ID " + request.getId() + " の期限切れ返還に失敗しました。管理者による手動対応が必要です。");
                 continue;
             }
             UUID requesterId = request.getRequesterId();
@@ -222,6 +296,103 @@ public class RequestService {
                 placeholders.put("amount", economyService.format(request.getReward()));
                 messages.send(online, "expire.notify-requester", placeholders);
             }
+        }
+    }
+
+    public void processAcceptedTimeouts() {
+        long now = System.currentTimeMillis();
+        long autoApproveMillis = config.getLong("request.auto-approve-hours", 72) * 3_600_000L;
+        long reminderLeadMillis = config.getLong("request.reminder-hours-before", 24) * 3_600_000L;
+        long reminderThreshold = Math.max(0, autoApproveMillis - reminderLeadMillis);
+
+        autoApproveStaleDeliveries(now - autoApproveMillis);
+        remindDeliveredRequesters(now - reminderThreshold);
+        remindIdleWorkers(now - reminderThreshold);
+    }
+
+    private void autoApproveStaleDeliveries(long deliveredBefore) {
+        List<Request> stale;
+        try {
+            stale = requestRepository.findStaleDelivered(deliveredBefore);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "自動承認対象の取得に失敗しました", e);
+            return;
+        }
+        for (Request request : stale) {
+            boolean statusUpdated;
+            try {
+                statusUpdated = requestRepository.autoApprove(request.getId());
+            } catch (SQLException e) {
+                logger.log(Level.WARNING, "自動承認処理に失敗しました", e);
+                continue;
+            }
+            if (!statusUpdated) {
+                // 既に依頼者が手動承認済みなど。入金前なのでスキップする。
+                continue;
+            }
+            if (!economyService.deposit(
+                    org.bukkit.Bukkit.getOfflinePlayer(request.getWorkerId()), request.getReward())) {
+                logger.warning("依頼ID " + request.getId() + " の自動承認支払いに失敗しました。管理者による手動対応が必要です。");
+                continue;
+            }
+            Map<String, String> placeholders = Map.of(
+                    "title", request.getTitle(),
+                    "amount", economyService.format(request.getReward()),
+                    "worker", request.getWorkerName());
+            Player requesterPlayer = org.bukkit.Bukkit.getPlayer(request.getRequesterId());
+            if (requesterPlayer != null) {
+                messages.send(requesterPlayer, "auto-approve.notify-requester", placeholders);
+            }
+            Player workerPlayer = org.bukkit.Bukkit.getPlayer(request.getWorkerId());
+            if (workerPlayer != null) {
+                messages.send(workerPlayer, "auto-approve.notify-worker", placeholders);
+            }
+        }
+    }
+
+    private void remindDeliveredRequesters(long deliveredBefore) {
+        List<Request> needingReminder;
+        try {
+            needingReminder = requestRepository.findDeliveredNeedingReminder(deliveredBefore);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "納品確認リマインドの取得に失敗しました", e);
+            return;
+        }
+        int reminderHours = config.getInt("request.reminder-hours-before", 24);
+        for (Request request : needingReminder) {
+            Player requesterPlayer = org.bukkit.Bukkit.getPlayer(request.getRequesterId());
+            if (requesterPlayer != null) {
+                messages.send(requesterPlayer, "auto-approve.reminder-requester", Map.of(
+                        "title", request.getTitle(), "hours", String.valueOf(reminderHours)));
+            }
+            markReminderSentQuietly(request.getId());
+        }
+    }
+
+    private void remindIdleWorkers(long acceptedBefore) {
+        List<Request> needingReminder;
+        try {
+            needingReminder = requestRepository.findAcceptedNeedingReminder(acceptedBefore);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "受注放置リマインドの取得に失敗しました", e);
+            return;
+        }
+        int reminderHours = config.getInt("request.reminder-hours-before", 24);
+        for (Request request : needingReminder) {
+            Player workerPlayer = org.bukkit.Bukkit.getPlayer(request.getWorkerId());
+            if (workerPlayer != null) {
+                messages.send(workerPlayer, "force-revert.reminder-worker", Map.of(
+                        "title", request.getTitle(), "hours", String.valueOf(reminderHours)));
+            }
+            markReminderSentQuietly(request.getId());
+        }
+    }
+
+    private void markReminderSentQuietly(int requestId) {
+        try {
+            requestRepository.markReminderSent(requestId);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "リマインド送信済みフラグの更新に失敗しました", e);
         }
     }
 

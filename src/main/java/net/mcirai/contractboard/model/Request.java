@@ -16,10 +16,14 @@ public class Request {
     private UUID workerId;
     private String workerName;
     private boolean rated;
+    private long acceptedAt;
+    private long deliveredAt;
+    private boolean reminderSent;
 
     public Request(int id, UUID requesterId, String requesterName, String title, String description,
                     double reward, long createdAt, long expiresAt, RequestStatus status,
-                    UUID workerId, String workerName, boolean rated) {
+                    UUID workerId, String workerName, boolean rated,
+                    long acceptedAt, long deliveredAt, boolean reminderSent) {
         this.id = id;
         this.requesterId = requesterId;
         this.requesterName = requesterName;
@@ -32,6 +36,9 @@ public class Request {
         this.workerId = workerId;
         this.workerName = workerName;
         this.rated = rated;
+        this.acceptedAt = acceptedAt;
+        this.deliveredAt = deliveredAt;
+        this.reminderSent = reminderSent;
     }
 
     public int getId() {
@@ -100,5 +107,29 @@ public class Request {
 
     public boolean isExpired() {
         return status == RequestStatus.OPEN && System.currentTimeMillis() >= expiresAt;
+    }
+
+    public long getAcceptedAt() {
+        return acceptedAt;
+    }
+
+    public void setAcceptedAt(long acceptedAt) {
+        this.acceptedAt = acceptedAt;
+    }
+
+    public long getDeliveredAt() {
+        return deliveredAt;
+    }
+
+    public void setDeliveredAt(long deliveredAt) {
+        this.deliveredAt = deliveredAt;
+    }
+
+    public boolean isReminderSent() {
+        return reminderSent;
+    }
+
+    public void setReminderSent(boolean reminderSent) {
+        this.reminderSent = reminderSent;
     }
 }
