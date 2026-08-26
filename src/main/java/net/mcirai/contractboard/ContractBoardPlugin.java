@@ -25,6 +25,7 @@ public class ContractBoardPlugin extends JavaPlugin {
         saveDefaultConfig();
         getConfig().options().copyDefaults(true);
         saveConfig();
+        reloadConfig();
 
         database = new Database(this);
         try {
