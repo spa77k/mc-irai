@@ -20,6 +20,8 @@ request:
   auto-approve-hours: 72
   # 上記の何時間前に、当事者へ事前リマインドを送るか
   reminder-hours-before: 24
+  # 完了・取り下げ・期限切れになった依頼を、何日後にデータベースから完全削除するか。0以下で無効化(削除しない)。
+  retention-days: 30
 
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
@@ -95,4 +97,3 @@ messages:
 
   rate:
     success: "&a{worker}を評価しました。(評価{stars}/5)"
-    already-rated: "&cこの依頼はすでに評価済みです。"

@@ -119,14 +119,7 @@ public class GuiListener implements Listener {
         int requestId = data[0];
         int action = data[1];
         switch (action) {
-            case 1 -> {
-                boolean success = requestService.completeRequest(player, requestId);
-                if (success) {
-                    guiManager.openRating(player, requestId);
-                } else {
-                    guiManager.openMyRequests(player);
-                }
-            }
+            case 1 -> guiManager.openRating(player, requestId);
             case 2 -> {
                 requestService.withdrawRequest(player, requestId);
                 guiManager.openMyRequests(player);
@@ -152,8 +145,8 @@ public class GuiListener implements Listener {
         int[] starSlots = RatingHolder.STAR_SLOTS;
         for (int i = 0; i < starSlots.length; i++) {
             if (starSlots[i] == slot) {
-                requestService.rate(player, holder.getRequestId(), i + 1, null);
-                player.closeInventory();
+                requestService.completeRequest(player, holder.getRequestId(), i + 1);
+                guiManager.openMyRequests(player);
                 return;
             }
         }

@@ -64,6 +64,7 @@ public class Database {
         ensureColumn("requests", "accepted_at", "INTEGER");
         ensureColumn("requests", "delivered_at", "INTEGER");
         ensureColumn("requests", "reminder_sent", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn("requests", "closed_at", "INTEGER");
     }
 
     private void ensureColumn(String table, String column, String definition) throws SQLException {

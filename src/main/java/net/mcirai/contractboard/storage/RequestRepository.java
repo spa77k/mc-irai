@@ -175,44 +175,59 @@ public class RequestRepository {
         }
     }
 
-    public boolean markExpired(int id) throws SQLException {
-        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
+    public boolean markExpired(int id, long closedAt) throws SQLException {
+        String sql = "UPDATE requests SET status = ?, closed_at = ? WHERE id = ? AND status = ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, RequestStatus.EXPIRED.name());
-            statement.setInt(2, id);
-            statement.setString(3, RequestStatus.OPEN.name());
+            statement.setLong(2, closedAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.OPEN.name());
             return statement.executeUpdate() > 0;
         }
     }
 
-    public boolean markCompleted(int id) throws SQLException {
-        String sql = "UPDATE requests SET status = ? WHERE id = ? AND (status = ? OR status = ?)";
+    public boolean markCompleted(int id, long closedAt) throws SQLException {
+        String sql = "UPDATE requests SET status = ?, closed_at = ? WHERE id = ? AND (status = ? OR status = ?)";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, RequestStatus.COMPLETED.name());
-            statement.setInt(2, id);
-            statement.setString(3, RequestStatus.ACCEPTED.name());
+            statement.setLong(2, closedAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.ACCEPTED.name());
+            statement.setString(5, RequestStatus.DELIVERED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean markWithdrawn(int id, long closedAt) throws SQLException {
+        String sql = "UPDATE requests SET status = ?, closed_at = ? WHERE id = ? AND status = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.WITHDRAWN.name());
+            statement.setLong(2, closedAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.OPEN.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    public boolean autoApprove(int id, long closedAt) throws SQLException {
+        String sql = "UPDATE requests SET status = ?, closed_at = ? WHERE id = ? AND status = ?";
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.COMPLETED.name());
+            statement.setLong(2, closedAt);
+            statement.setInt(3, id);
             statement.setString(4, RequestStatus.DELIVERED.name());
             return statement.executeUpdate() > 0;
         }
     }
 
-    public boolean markWithdrawn(int id) throws SQLException {
-        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
-        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
-            statement.setString(1, RequestStatus.WITHDRAWN.name());
-            statement.setInt(2, id);
-            statement.setString(3, RequestStatus.OPEN.name());
-            return statement.executeUpdate() > 0;
-        }
-    }
-
-    public boolean autoApprove(int id) throws SQLException {
-        String sql = "UPDATE requests SET status = ? WHERE id = ? AND status = ?";
+    public int deleteClosedBefore(long closedBefore) throws SQLException {
+        String sql = "DELETE FROM requests WHERE status IN (?, ?, ?) AND closed_at <= ?";
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, RequestStatus.COMPLETED.name());
-            statement.setInt(2, id);
-            statement.setString(3, RequestStatus.DELIVERED.name());
-            return statement.executeUpdate() > 0;
+            statement.setString(2, RequestStatus.WITHDRAWN.name());
+            statement.setString(3, RequestStatus.EXPIRED.name());
+            statement.setLong(4, closedBefore);
+            return statement.executeUpdate();
         }
     }
 

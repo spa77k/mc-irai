@@ -268,7 +268,7 @@ public class GuiManager {
         switch (action) {
             case 1 -> {
                 material = Material.LIME_DYE;
-                lore.add("§aクリックで完了承認");
+                lore.add("§aクリックで完了承認(星評価が必須です)");
             }
             case 2 -> {
                 material = Material.RED_DYE;

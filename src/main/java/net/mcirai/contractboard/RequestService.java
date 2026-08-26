@@ -179,7 +179,7 @@ public class RequestService {
         }
     }
 
-    public boolean completeRequest(Player requester, int requestId) {
+    public boolean completeRequest(Player requester, int requestId, int stars) {
         Request request = findOrNull(requestId);
         if (request == null
                 || (request.getStatus() != RequestStatus.ACCEPTED && request.getStatus() != RequestStatus.DELIVERED)
@@ -189,7 +189,7 @@ public class RequestService {
         }
         boolean statusUpdated;
         try {
-            statusUpdated = requestRepository.markCompleted(requestId);
+            statusUpdated = requestRepository.markCompleted(requestId, System.currentTimeMillis());
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の完了処理に失敗しました", e);
             return false;
@@ -203,11 +203,20 @@ public class RequestService {
             requester.sendMessage(messages.get("prefix") + "§c報酬の支払いに失敗しました。管理者に連絡してください。");
             return false;
         }
+        try {
+            ratingRepository.insert(new Rating(requestId, requester.getUniqueId(), request.getWorkerId(),
+                    stars, null, System.currentTimeMillis()));
+            requestRepository.markRated(requestId);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "評価の登録に失敗しました", e);
+        }
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("title", request.getTitle());
         placeholders.put("amount", economyService.format(request.getReward()));
         placeholders.put("worker", request.getWorkerName());
+        placeholders.put("stars", String.valueOf(stars));
         messages.send(requester, "complete.approved", placeholders);
+        messages.send(requester, "rate.success", placeholders);
         return true;
     }
 
@@ -222,7 +231,7 @@ public class RequestService {
         }
         boolean statusUpdated;
         try {
-            statusUpdated = requestRepository.markWithdrawn(requestId);
+            statusUpdated = requestRepository.markWithdrawn(requestId, System.currentTimeMillis());
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の取り下げに失敗しました", e);
             return;
@@ -239,30 +248,6 @@ public class RequestService {
         messages.send(requester, "withdraw.success", placeholders);
     }
 
-    public void rate(Player requester, int requestId, int stars, String comment) {
-        Request request = findOrNull(requestId);
-        if (request == null || !requester.getUniqueId().equals(request.getRequesterId())
-                || request.getStatus() != RequestStatus.COMPLETED) {
-            return;
-        }
-        if (request.isRated()) {
-            messages.send(requester, "rate.already-rated");
-            return;
-        }
-        try {
-            ratingRepository.insert(new Rating(requestId, requester.getUniqueId(), request.getWorkerId(),
-                    stars, comment, System.currentTimeMillis()));
-            requestRepository.markRated(requestId);
-        } catch (SQLException e) {
-            logger.log(Level.WARNING, "評価の登録に失敗しました", e);
-            return;
-        }
-        Map<String, String> placeholders = new HashMap<>();
-        placeholders.put("worker", request.getWorkerName());
-        placeholders.put("stars", String.valueOf(stars));
-        messages.send(requester, "rate.success", placeholders);
-    }
-
     public void processExpired() {
         long now = System.currentTimeMillis();
         List<Request> expired;
@@ -275,7 +260,7 @@ public class RequestService {
         for (Request request : expired) {
             boolean statusUpdated;
             try {
-                statusUpdated = requestRepository.markExpired(request.getId());
+                statusUpdated = requestRepository.markExpired(request.getId(), now);
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "依頼の失効処理に失敗しました", e);
                 continue;
@@ -321,7 +306,7 @@ public class RequestService {
         for (Request request : stale) {
             boolean statusUpdated;
             try {
-                statusUpdated = requestRepository.autoApprove(request.getId());
+                statusUpdated = requestRepository.autoApprove(request.getId(), System.currentTimeMillis());
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "自動承認処理に失敗しました", e);
                 continue;
@@ -385,6 +370,22 @@ public class RequestService {
                         "title", request.getTitle(), "hours", String.valueOf(reminderHours)));
             }
             markReminderSentQuietly(request.getId());
+        }
+    }
+
+    public void purgeOldRequests() {
+        int retentionDays = config.getInt("request.retention-days", 30);
+        if (retentionDays <= 0) {
+            return;
+        }
+        long closedBefore = System.currentTimeMillis() - retentionDays * 86_400_000L;
+        try {
+            int deleted = requestRepository.deleteClosedBefore(closedBefore);
+            if (deleted > 0) {
+                logger.info("保持期間(" + retentionDays + "日)を過ぎた依頼を" + deleted + "件削除しました。");
+            }
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "古い依頼の削除に失敗しました", e);
         }
     }
 
