@@ -1,0 +1,16 @@
+name: ContractBoard
+version: '${project.version}'
+main: net.mcirai.contractboard.ContractBoardPlugin
+api-version: '1.20'
+author: mc-irai
+depend: [Vault]
+
+commands:
+  irai:
+    description: 依頼掲示板を開く
+    usage: /irai [create|list|my|cancel]
+
+permissions:
+  irai.use:
+    description: 依頼掲示板の利用(作成・受注・評価)
+    default: true

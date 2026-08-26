@@ -1,0 +1,76 @@
+# ContractBoard 設定ファイル
+
+# 依頼作成時の制約
+request:
+  # 報酬額の下限・上限
+  min-reward: 1
+  max-reward: 1000000
+  # 期限の下限・上限(時間単位)
+  min-expire-hours: 1
+  max-expire-hours: 168
+  # タイトル・詳細説明の最大文字数
+  max-title-length: 32
+  max-description-length: 200
+  # 依頼作成時に報酬へ上乗せする手数料率(0.05 = 5%)。徴収した手数料は消滅する。
+  # 依頼が取り下げ・期限切れになった場合も手数料分は返還されない。
+  fee-rate: 0.05
+
+# 期限切れチェックの実行間隔(秒)
+expiration-check-interval-seconds: 60
+
+messages:
+  prefix: "&a[依頼所] &r"
+  no-permission: "&cこの操作を行う権限がありません。"
+  player-only: "&cこのコマンドはプレイヤーのみ実行できます。"
+  unknown-subcommand: "&c不明なサブコマンドです。/irai [create|list|my|cancel]"
+  economy-not-found: "&c経済プラグイン(Vault)が見つかりません。管理者に連絡してください。"
+
+  gui:
+    main-title: "依頼所"
+    list-title: "依頼一覧"
+    detail-title: "依頼の詳細"
+    my-requests-title: "自分の依頼"
+    my-accepted-title: "受注中の依頼"
+    rate-title: "評価する"
+
+  create:
+    start: "&a依頼作成を開始します。チャットでタイトルを入力してください。(キャンセルは /irai cancel)"
+    ask-title: "&aタイトルを入力してください。(最大{max}文字)"
+    title-too-long: "&cタイトルは{max}文字以内で入力してください。"
+    ask-description: "&a詳細説明を入力してください。(最大{max}文字)"
+    description-too-long: "&c詳細説明は{max}文字以内で入力してください。"
+    ask-reward: "&a報酬額を数値で入力してください。({min}〜{max}、手数料{fee-percent}%が別途上乗せで徴収されます)"
+    invalid-reward: "&c報酬額は{min}〜{max}の整数で入力してください。"
+    ask-expire: "&a期限を時間単位の数値で入力してください。({min}〜{max}時間)"
+    invalid-expire: "&c期限は{min}〜{max}の整数(時間)で入力してください。"
+    insufficient-funds: "&c所持金が足りません。必要額: {amount}(報酬{reward}+手数料{fee})"
+    completed: "&a依頼「{title}」を作成しました。報酬{reward}+手数料{fee}=合計{amount}を徴収し、報酬分を依頼所に預けました。"
+    cancelled-input: "&e依頼作成をキャンセルしました。"
+    no-active-session: "&e進行中の依頼作成はありません。"
+
+  list:
+    empty: "&e現在募集中の依頼はありません。"
+
+  accept:
+    already-accepted-by-you: "&cすでに1件受注中のため、新しい依頼は受けられません。"
+    already-taken: "&cこの依頼はすでに他のプレイヤーが受注しています。"
+    own-request: "&c自分の依頼は受注できません。"
+    success: "&a依頼「{title}」を受注しました。"
+
+  giveup:
+    success: "&e依頼「{title}」の受注を取り消しました。"
+
+  complete:
+    approved: "&a依頼「{title}」の完了を承認し、{amount}を{worker}に支払いました。"
+    not-accepted: "&cこの依頼はまだ受注されていません。"
+
+  withdraw:
+    success: "&e依頼「{title}」を取り下げ、報酬{amount}を返還しました。"
+    already-accepted: "&c受注済みの依頼は取り下げできません。"
+
+  expire:
+    notify-requester: "&e依頼「{title}」が期限切れになり、報酬{amount}を返還しました。"
+
+  rate:
+    success: "&a{worker}を評価しました。(評価{stars}/5)"
+    already-rated: "&cこの依頼はすでに評価済みです。"
