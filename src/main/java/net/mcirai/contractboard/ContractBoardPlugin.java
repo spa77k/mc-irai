@@ -23,6 +23,8 @@ public class ContractBoardPlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        getConfig().options().copyDefaults(true);
+        saveConfig();
 
         database = new Database(this);
         try {
