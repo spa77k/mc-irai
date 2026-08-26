@@ -9,11 +9,14 @@ import net.mcirai.contractboard.gui.RequestDetailHolder;
 import net.mcirai.contractboard.gui.RequestListHolder;
 import net.mcirai.contractboard.session.SessionManager;
 import net.mcirai.contractboard.util.MessageUtil;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.InventoryHolder;
+
+import java.util.Map;
 
 public class GuiListener implements Listener {
 
@@ -21,13 +24,15 @@ public class GuiListener implements Listener {
     private final RequestService requestService;
     private final SessionManager sessionManager;
     private final MessageUtil messages;
+    private final FileConfiguration config;
 
     public GuiListener(GuiManager guiManager, RequestService requestService,
-                        SessionManager sessionManager, MessageUtil messages) {
+                        SessionManager sessionManager, MessageUtil messages, FileConfiguration config) {
         this.guiManager = guiManager;
         this.requestService = requestService;
         this.sessionManager = sessionManager;
         this.messages = messages;
+        this.config = config;
     }
 
     @EventHandler
@@ -67,7 +72,8 @@ public class GuiListener implements Listener {
             player.closeInventory();
             sessionManager.start(player.getUniqueId());
             messages.send(player, "create.start");
-            messages.send(player, "create.ask-title");
+            int maxTitle = config.getInt("request.max-title-length", 32);
+            messages.send(player, "create.ask-title", Map.of("max", String.valueOf(maxTitle)));
         } else if (slot == MainMenuHolder.SLOT_MY) {
             guiManager.openMyRequests(player);
         }

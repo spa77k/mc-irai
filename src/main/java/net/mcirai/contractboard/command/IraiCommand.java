@@ -6,18 +6,24 @@ import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+
+import java.util.Map;
 
 public class IraiCommand implements CommandExecutor {
 
     private final GuiManager guiManager;
     private final SessionManager sessionManager;
     private final MessageUtil messages;
+    private final FileConfiguration config;
 
-    public IraiCommand(GuiManager guiManager, SessionManager sessionManager, MessageUtil messages) {
+    public IraiCommand(GuiManager guiManager, SessionManager sessionManager, MessageUtil messages,
+                        FileConfiguration config) {
         this.guiManager = guiManager;
         this.sessionManager = sessionManager;
         this.messages = messages;
+        this.config = config;
     }
 
     @Override
@@ -36,7 +42,8 @@ public class IraiCommand implements CommandExecutor {
             case "create" -> {
                 sessionManager.start(player.getUniqueId());
                 messages.send(player, "create.start");
-                messages.send(player, "create.ask-title");
+                int maxTitle = config.getInt("request.max-title-length", 32);
+                messages.send(player, "create.ask-title", Map.of("max", String.valueOf(maxTitle)));
             }
             case "list" -> guiManager.openRequestList(player, 0);
             case "my" -> guiManager.openMyRequests(player);

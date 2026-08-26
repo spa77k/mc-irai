@@ -48,10 +48,10 @@ public class ContractBoardPlugin extends JavaPlugin {
                 economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();
 
-        getCommand("irai").setExecutor(new IraiCommand(guiManager, sessionManager, messages));
+        getCommand("irai").setExecutor(new IraiCommand(guiManager, sessionManager, messages, getConfig()));
 
         getServer().getPluginManager().registerEvents(
-                new GuiListener(guiManager, requestService, sessionManager, messages), this);
+                new GuiListener(guiManager, requestService, sessionManager, messages, getConfig()), this);
         getServer().getPluginManager().registerEvents(
                 new ChatInputListener(this, getConfig(), sessionManager, requestService, messages), this);
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(sessionManager), this);
