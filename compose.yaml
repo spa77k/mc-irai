@@ -1,6 +1,6 @@
 services:
   paper:
-    image: itzg/minecraft-server:java25
+    image: itzg/minecraft-server:2026.8.2-java25@sha256:efa878ddb49cf5251b2e5f2ad71b08fd2f7236c1f7907433f6697258b31d2ce4
     container_name: mc-irai-paper
     tty: true
     stdin_open: true
@@ -14,7 +14,7 @@ services:
       MEMORY: "1G"
       ONLINE_MODE: "FALSE"
       ENABLE_RCON: "TRUE"
-      RCON_PASSWORD: "mc-irai-local-test"
+      RCON_PASSWORD: "${MC_RCON_PASSWORD:?MC_RCON_PASSWORD must be set in .env}"
       RCON_PORT: "25575"
       MODE: "creative"
       DIFFICULTY: "peaceful"
