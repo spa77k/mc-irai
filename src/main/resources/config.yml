@@ -24,6 +24,8 @@ request:
   retention-days: 30
   # 依頼作成時に設定できる「受注に必要な最低星数」の上限(0〜この値)。0を指定すると条件なし。
   min-stars-max: 5
+  # 依頼作成のチャット入力を何秒放置したら自動キャンセルするか
+  input-timeout-seconds: 120
 
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
@@ -44,7 +46,8 @@ messages:
     rate-title: "評価する"
 
   create:
-    start: "&a依頼作成を開始します。チャットでタイトルを入力してください。(キャンセルは /irai cancel)"
+    start: "&a依頼作成を開始します。次の入力は依頼所だけが受け取り、全体チャットやDiscordには流れません。(キャンセルは /irai cancel)"
+    input-timeout: "&e一定時間入力がなかったため、依頼作成をキャンセルしました。"
     ask-title: "&aタイトルを入力してください。(最大{max}文字)"
     title-too-long: "&cタイトルは{max}文字以内で入力してください。"
     ask-description: "&a詳細説明を入力してください。(最大{max}文字)"

@@ -6,6 +6,8 @@ import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.listener.ChatInputListener;
 import net.mcirai.contractboard.listener.GuiListener;
 import net.mcirai.contractboard.listener.PlayerQuitListener;
+import net.mcirai.contractboard.session.CreateRequestConversation;
+import net.mcirai.contractboard.session.RequestInputProcessor;
 import net.mcirai.contractboard.session.SessionManager;
 import net.mcirai.contractboard.storage.Database;
 import net.mcirai.contractboard.storage.RatingRepository;
@@ -50,15 +52,19 @@ public class ContractBoardPlugin extends JavaPlugin {
         GuiManager guiManager = new GuiManager(requestRepository, ratingRepository,
                 economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();
+        RequestInputProcessor requestInputProcessor = new RequestInputProcessor(
+                getConfig(), sessionManager, requestService, messages);
+        CreateRequestConversation createRequestConversation = new CreateRequestConversation(
+                this, getConfig(), sessionManager, requestInputProcessor, messages);
 
-        IraiCommand iraiCommand = new IraiCommand(guiManager, sessionManager, messages, getConfig());
+        IraiCommand iraiCommand = new IraiCommand(guiManager, sessionManager, messages, createRequestConversation);
         getCommand("irai").setExecutor(iraiCommand);
         getCommand("irai").setTabCompleter(iraiCommand);
 
         getServer().getPluginManager().registerEvents(
-                new GuiListener(guiManager, requestService, sessionManager, messages, getConfig()), this);
+                new GuiListener(guiManager, requestService, createRequestConversation, this), this);
         getServer().getPluginManager().registerEvents(
-                new ChatInputListener(this, getConfig(), sessionManager, requestService, messages), this);
+                new ChatInputListener(this, sessionManager, requestInputProcessor), this);
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(sessionManager), this);
 
         long intervalTicks = getConfig().getLong("expiration-check-interval-seconds", 60) * 20L;

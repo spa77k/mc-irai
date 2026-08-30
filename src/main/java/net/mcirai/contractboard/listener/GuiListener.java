@@ -7,32 +7,28 @@ import net.mcirai.contractboard.gui.MyRequestsHolder;
 import net.mcirai.contractboard.gui.RatingHolder;
 import net.mcirai.contractboard.gui.RequestDetailHolder;
 import net.mcirai.contractboard.gui.RequestListHolder;
-import net.mcirai.contractboard.session.SessionManager;
-import net.mcirai.contractboard.util.MessageUtil;
-import org.bukkit.configuration.file.FileConfiguration;
+import net.mcirai.contractboard.session.CreateRequestConversation;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.InventoryHolder;
-
-import java.util.Map;
+import org.bukkit.plugin.Plugin;
 
 public class GuiListener implements Listener {
 
     private final GuiManager guiManager;
     private final RequestService requestService;
-    private final SessionManager sessionManager;
-    private final MessageUtil messages;
-    private final FileConfiguration config;
+    private final CreateRequestConversation createRequestConversation;
+    private final Plugin plugin;
 
     public GuiListener(GuiManager guiManager, RequestService requestService,
-                        SessionManager sessionManager, MessageUtil messages, FileConfiguration config) {
+                        CreateRequestConversation createRequestConversation, Plugin plugin) {
         this.guiManager = guiManager;
         this.requestService = requestService;
-        this.sessionManager = sessionManager;
-        this.messages = messages;
-        this.config = config;
+        this.createRequestConversation = createRequestConversation;
+        this.plugin = plugin;
     }
 
     @EventHandler
@@ -70,10 +66,7 @@ public class GuiListener implements Listener {
             guiManager.openRequestList(player, 0);
         } else if (slot == MainMenuHolder.SLOT_CREATE) {
             player.closeInventory();
-            sessionManager.start(player.getUniqueId());
-            messages.send(player, "create.start");
-            int maxTitle = config.getInt("request.max-title-length", 32);
-            messages.send(player, "create.ask-title", Map.of("max", String.valueOf(maxTitle)));
+            Bukkit.getScheduler().runTask(plugin, () -> createRequestConversation.start(player));
         } else if (slot == MainMenuHolder.SLOT_MY) {
             guiManager.openMyRequests(player);
         }
