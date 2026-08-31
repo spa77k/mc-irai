@@ -16,5 +16,6 @@ public class ExpirationTask extends BukkitRunnable {
         requestService.processExpired();
         requestService.processAcceptedTimeouts();
         requestService.purgeOldRequests();
+        requestService.processVaultRetention();
     }
 }

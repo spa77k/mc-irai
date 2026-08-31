@@ -4,19 +4,19 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.jetbrains.annotations.NotNull;
 
-public class RequestDetailHolder implements InventoryHolder {
-
-    public static final int SLOT_ACCEPT = 22;
-    public static final int SLOT_BOX = 18;
-    public static final int SLOT_BACK = 26;
+/**
+ * 依頼の納品ボックス。GUIの中で唯一アイテムの出し入れを許す画面で、
+ * 閲覧専用(依頼者側、または納品報告後)のときは editable が false になる。
+ */
+public class DeliveryBoxHolder implements InventoryHolder {
 
     private Inventory inventory;
     private final int requestId;
-    private final boolean fromList;
+    private final boolean editable;
 
-    public RequestDetailHolder(int requestId, boolean fromList) {
+    public DeliveryBoxHolder(int requestId, boolean editable) {
         this.requestId = requestId;
-        this.fromList = fromList;
+        this.editable = editable;
     }
 
     public void setInventory(Inventory inventory) {
@@ -33,7 +33,7 @@ public class RequestDetailHolder implements InventoryHolder {
         return requestId;
     }
 
-    public boolean isFromList() {
-        return fromList;
+    public boolean isEditable() {
+        return editable;
     }
 }

@@ -1,11 +1,14 @@
 package net.mcirai.contractboard.gui;
 
+import net.mcirai.contractboard.RequestService;
 import net.mcirai.contractboard.economy.EconomyService;
 import net.mcirai.contractboard.model.Request;
 import net.mcirai.contractboard.model.RequestStatus;
+import net.mcirai.contractboard.model.VaultItem;
 import net.mcirai.contractboard.storage.RatingRepository;
 import net.mcirai.contractboard.storage.RequestRepository;
 import net.mcirai.contractboard.util.ItemBuilder;
+import net.mcirai.contractboard.util.ItemSerialization;
 import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -20,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -27,20 +32,34 @@ import java.util.logging.Logger;
 public class GuiManager {
 
     private static final int PAGE_SIZE = 45;
+
+    // 自分の依頼画面のボタン種別
+    public static final int ACTION_NONE = 0;
+    public static final int ACTION_APPROVE = 1;
+    public static final int ACTION_WITHDRAW = 2;
+    public static final int ACTION_GIVE_UP = 3;
+    public static final int ACTION_DELIVER = 4;
+    public static final int ACTION_FORCE_REVERT = 5;
+    public static final int ACTION_OPEN_BOX = 6;
+    public static final int ACTION_REVISION = 7;
+    public static final int ACTION_VIEW_BOX = 8;
+
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MM/dd HH:mm", Locale.JAPAN);
 
     private final RequestRepository requestRepository;
     private final RatingRepository ratingRepository;
+    private final RequestService requestService;
     private final EconomyService economyService;
     private final MessageUtil messages;
     private final FileConfiguration config;
     private final Logger logger;
 
     public GuiManager(RequestRepository requestRepository, RatingRepository ratingRepository,
-                       EconomyService economyService, MessageUtil messages, FileConfiguration config,
-                       Logger logger) {
+                       RequestService requestService, EconomyService economyService, MessageUtil messages,
+                       FileConfiguration config, Logger logger) {
         this.requestRepository = requestRepository;
         this.ratingRepository = ratingRepository;
+        this.requestService = requestService;
         this.economyService = economyService;
         this.messages = messages;
         this.config = config;
@@ -63,6 +82,12 @@ public class GuiManager {
         inventory.setItem(MainMenuHolder.SLOT_MY, new ItemBuilder(Material.NAME_TAG)
                 .name("§a自分の依頼")
                 .lore("§7出した依頼・受けた依頼を見る")
+                .build());
+        int vaultCount = requestService.findVaultItems(player.getUniqueId()).size();
+        inventory.setItem(MainMenuHolder.SLOT_VAULT, new ItemBuilder(Material.CHEST)
+                .name("§a保管庫")
+                .lore("§7受け取り待ちのアイテム: §f" + vaultCount + "件",
+                        "§7クリックで開く")
                 .build());
 
         player.openInventory(inventory);
@@ -118,6 +143,9 @@ public class GuiManager {
         lore.add("§7依頼者: §f" + request.getRequesterName());
         lore.add("§7報酬: §e" + economyService.format(request.getReward()));
         lore.add("§7期限: §f" + dateFormat.format(new Date(request.getExpiresAt())));
+        if (request.isItemDelivery()) {
+            lore.add("§b納品ボックスあり(アイテム納品が必要)");
+        }
         if (request.getMinStars() > 0) {
             lore.add((eligible ? "§7" : "§c") + "受注条件: ★" + request.getMinStars() + "以上");
         }
@@ -170,6 +198,11 @@ public class GuiManager {
         lore.add("§7報酬: §e" + economyService.format(request.getReward()));
         lore.add("§7期限: §f" + dateFormat.format(new Date(request.getExpiresAt())));
         lore.add("§7状態: §f" + statusLabel(request.getStatus()));
+        if (request.isItemDelivery()) {
+            lore.add("§b納品方法: §f納品ボックスへアイテムを入れる");
+        } else {
+            lore.add("§7納品方法: §f報告のみ(アイテム納品なし)");
+        }
         if (request.getMinStars() > 0) {
             lore.add((eligible ? "§7" : "§c") + "受注条件: ★" + request.getMinStars() + "以上");
         }
@@ -192,6 +225,17 @@ public class GuiManager {
         } else if (request.getStatus() == RequestStatus.OPEN && !isOwn) {
             inventory.setItem(RequestDetailHolder.SLOT_ACCEPT, new ItemBuilder(Material.RED_WOOL)
                     .name("§c受注条件を満たしていません(★" + request.getMinStars() + "以上必要)")
+                    .build());
+        }
+
+        // 依頼者・受注者は進行中の納品ボックスをここからも覗ける(取り出しは不可)
+        boolean inProgress = request.getStatus() == RequestStatus.ACCEPTED
+                || request.getStatus() == RequestStatus.DELIVERED;
+        boolean isParty = isOwn || player.getUniqueId().equals(request.getWorkerId());
+        if (request.isItemDelivery() && inProgress && isParty) {
+            inventory.setItem(RequestDetailHolder.SLOT_BOX, new ItemBuilder(Material.CHEST)
+                    .name("§b納品ボックスを開く")
+                    .lore("§7中身: §f" + requestService.loadBoxContents(requestId).size() + "スロット")
                     .build());
         }
 
@@ -229,21 +273,25 @@ public class GuiManager {
             for (Request request : mine) {
                 if (slot >= 44) break;
                 int action = switch (request.getStatus()) {
-                    case ACCEPTED, DELIVERED -> 1;
-                    case OPEN -> 2;
-                    default -> 0;
+                    case ACCEPTED, DELIVERED -> ACTION_APPROVE;
+                    case OPEN -> ACTION_WITHDRAW;
+                    default -> ACTION_NONE;
                 };
-                inventory.setItem(slot, buildMyRequestItem(request, action));
-                holder.getSlotActions().put(slot, new int[]{request.getId(), action});
-                slot++;
+                slot = addAction(inventory, holder, slot, request, action);
 
+                boolean inProgress = request.getStatus() == RequestStatus.ACCEPTED
+                        || request.getStatus() == RequestStatus.DELIVERED;
+                if (request.isItemDelivery() && inProgress) {
+                    slot = addAction(inventory, holder, slot, request, ACTION_VIEW_BOX);
+                }
+                if (request.getStatus() == RequestStatus.DELIVERED) {
+                    slot = addAction(inventory, holder, slot, request, ACTION_REVISION);
+                }
                 boolean forceRevertEligible = request.getStatus() == RequestStatus.ACCEPTED
                         && request.getAcceptedAt() > 0
                         && now - request.getAcceptedAt() >= autoApproveMillis;
-                if (forceRevertEligible && slot < 44) {
-                    inventory.setItem(slot, buildMyRequestItem(request, 5));
-                    holder.getSlotActions().put(slot, new int[]{request.getId(), 5});
-                    slot++;
+                if (forceRevertEligible) {
+                    slot = addAction(inventory, holder, slot, request, ACTION_FORCE_REVERT);
                 }
             }
         }
@@ -253,18 +301,15 @@ public class GuiManager {
             for (Request request : accepted) {
                 if (slot >= 44) break;
                 if (request.getStatus() == RequestStatus.ACCEPTED) {
-                    inventory.setItem(slot, buildMyRequestItem(request, 4));
-                    holder.getSlotActions().put(slot, new int[]{request.getId(), 4});
-                    slot++;
-                    if (slot < 44) {
-                        inventory.setItem(slot, buildMyRequestItem(request, 3));
-                        holder.getSlotActions().put(slot, new int[]{request.getId(), 3});
-                        slot++;
+                    if (request.isItemDelivery()) {
+                        slot = addAction(inventory, holder, slot, request, ACTION_OPEN_BOX);
                     }
+                    slot = addAction(inventory, holder, slot, request, ACTION_DELIVER);
+                    slot = addAction(inventory, holder, slot, request, ACTION_GIVE_UP);
+                } else if (request.getStatus() == RequestStatus.DELIVERED && request.isItemDelivery()) {
+                    slot = addAction(inventory, holder, slot, request, ACTION_VIEW_BOX);
                 } else {
-                    inventory.setItem(slot, buildMyRequestItem(request, 0));
-                    holder.getSlotActions().put(slot, new int[]{request.getId(), 0});
-                    slot++;
+                    slot = addAction(inventory, holder, slot, request, ACTION_NONE);
                 }
             }
         }
@@ -275,36 +320,72 @@ public class GuiManager {
         player.openInventory(inventory);
     }
 
+    private int addAction(Inventory inventory, MyRequestsHolder holder, int slot, Request request, int action) {
+        if (slot >= 44) {
+            return slot;
+        }
+        inventory.setItem(slot, buildMyRequestItem(request, action));
+        holder.getSlotActions().put(slot, new int[]{request.getId(), action});
+        return slot + 1;
+    }
+
     private ItemStack buildMyRequestItem(Request request, int action) {
         List<String> lore = new ArrayList<>();
         lore.add("§7報酬: §e" + economyService.format(request.getReward()));
         lore.add("§7状態: §f" + statusLabel(request.getStatus()));
+        if (request.isItemDelivery()) {
+            lore.add("§b納品ボックスあり");
+        }
         if (request.getWorkerName() != null) {
             lore.add("§7受注者: §f" + request.getWorkerName());
         }
         lore.add("");
         Material material = Material.PAPER;
         switch (action) {
-            case 1 -> {
+            case ACTION_APPROVE -> {
                 material = Material.LIME_DYE;
                 lore.add("§aクリックで完了承認(星評価が必須です)");
+                if (request.isItemDelivery()) {
+                    lore.add("§7承認すると納品物が保管庫に入ります");
+                }
             }
-            case 2 -> {
+            case ACTION_WITHDRAW -> {
                 material = Material.RED_DYE;
                 lore.add("§cクリックで取り下げ");
             }
-            case 3 -> {
+            case ACTION_GIVE_UP -> {
                 material = Material.YELLOW_DYE;
                 lore.add("§eクリックで受注を取り消す(ギブアップ)");
+                if (request.isItemDelivery()) {
+                    lore.add("§7ボックスの中身は自分の保管庫へ戻ります");
+                }
             }
-            case 4 -> {
+            case ACTION_DELIVER -> {
                 material = Material.LIME_DYE;
                 lore.add("§aクリックで納品完了を報告");
+                if (request.isItemDelivery()) {
+                    lore.add("§7報告するとボックスは固定され、出し入れできなくなります");
+                }
             }
-            case 5 -> {
+            case ACTION_FORCE_REVERT -> {
                 material = Material.RED_DYE;
                 lore.add("§c放置されています");
                 lore.add("§cクリックで強制的に募集中へ差し戻す");
+            }
+            case ACTION_OPEN_BOX -> {
+                material = Material.CHEST;
+                lore.add("§bクリックで納品ボックスを開く");
+                lore.add("§7チェストと同じように出し入れできます");
+            }
+            case ACTION_REVISION -> {
+                material = Material.ORANGE_DYE;
+                lore.add("§6クリックでやり直しを依頼(差し戻し)");
+                lore.add("§7受注中に戻り、自動承認の待ち時間もやり直しになります");
+            }
+            case ACTION_VIEW_BOX -> {
+                material = Material.CHEST;
+                lore.add("§bクリックで納品ボックスの中身を確認");
+                lore.add("§7閲覧のみで、取り出しはできません");
             }
             default -> lore.add("§7(操作なし)");
         }
@@ -314,6 +395,79 @@ public class GuiManager {
                 .build();
     }
 
+    /**
+     * 納品ボックスを開く。editable が true のときだけアイテムの出し入れができる。
+     * 装飾アイテムを一切置かないため、誤って飾りを持ち出される事故が起きない。
+     */
+    public void openDeliveryBox(Player player, int requestId, boolean editable) {
+        DeliveryBoxHolder holder = new DeliveryBoxHolder(requestId, editable);
+        String title = messages.get(editable ? "gui.box-title" : "gui.box-view-title");
+        Inventory inventory = Bukkit.createInventory(holder, RequestService.BOX_SIZE, title);
+        holder.setInventory(inventory);
+
+        for (Map.Entry<Integer, ItemStack> entry : requestService.loadBoxContents(requestId).entrySet()) {
+            if (entry.getKey() >= 0 && entry.getKey() < RequestService.BOX_SIZE) {
+                inventory.setItem(entry.getKey(), entry.getValue());
+            }
+        }
+
+        player.openInventory(inventory);
+        messages.send(player, editable ? "box.opened-editable" : "box.opened-readonly");
+    }
+
+    public void openVault(Player player, int page) {
+        List<VaultItem> items = requestService.findVaultItems(player.getUniqueId());
+        int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) PAGE_SIZE));
+        page = Math.max(0, Math.min(page, totalPages - 1));
+
+        VaultHolder holder = new VaultHolder();
+        holder.setPage(page);
+        Inventory inventory = Bukkit.createInventory(holder, 54, messages.get("gui.vault-title"));
+        holder.setInventory(inventory);
+
+        int retentionDays = config.getInt("box.vault-retention-days", 30);
+        int from = page * PAGE_SIZE;
+        int to = Math.min(items.size(), from + PAGE_SIZE);
+        for (int i = from; i < to; i++) {
+            VaultItem item = items.get(i);
+            int slot = i - from;
+            List<String> lore = new ArrayList<>();
+            lore.add("§7理由: §f" + item.getReason());
+            lore.add("§7預かり日時: §f" + dateFormat.format(new Date(item.getCreatedAt())));
+            if (retentionDays > 0) {
+                lore.add("§7保管期限: §f"
+                        + dateFormat.format(new Date(item.getCreatedAt() + retentionDays * 86_400_000L)));
+            }
+            lore.add("");
+            lore.add("§eクリックで受け取る");
+            inventory.setItem(slot, new ItemBuilder(vaultDisplay(item)).lore(lore).build());
+            holder.getSlotToVaultId().put(slot, item.getId());
+        }
+
+        if (items.isEmpty()) {
+            player.sendMessage(messages.get("prefix") + messages.get("vault.empty"));
+        }
+        if (page > 0) {
+            inventory.setItem(VaultHolder.SLOT_PREV, new ItemBuilder(Material.ARROW)
+                    .name("§a前のページ").build());
+        }
+        inventory.setItem(VaultHolder.SLOT_BACK, new ItemBuilder(Material.BARRIER)
+                .name("§cメニューに戻る").build());
+        if (page < totalPages - 1) {
+            inventory.setItem(VaultHolder.SLOT_NEXT, new ItemBuilder(Material.ARROW)
+                    .name("§a次のページ").build());
+        }
+
+        player.openInventory(inventory);
+    }
+
+    private ItemStack vaultDisplay(VaultItem item) {
+        Optional<ItemStack> deserialized = ItemSerialization.deserialize(item.getItemData(), logger,
+                "vault_items#" + item.getId());
+        return deserialized.orElseGet(() -> new ItemBuilder(Material.BARRIER)
+                .name("§c(データを復元できませんでした)").build());
+    }
+
     public void openRating(Player player, int requestId) {
         RatingHolder holder = new RatingHolder(requestId);
         Inventory inventory = Bukkit.createInventory(holder, 27, messages.get("gui.rate-title"));
@@ -321,11 +475,9 @@ public class GuiManager {
 
         for (int i = 0; i < RatingHolder.STAR_SLOTS.length; i++) {
             int stars = i + 1;
-            List<String> lore = new ArrayList<>();
-            lore.add("§7クリックでこの評価を送る");
             inventory.setItem(RatingHolder.STAR_SLOTS[i], new ItemBuilder(Material.YELLOW_DYE)
                     .name("§e" + "★".repeat(stars) + "☆".repeat(5 - stars))
-                    .lore(lore)
+                    .lore("§7クリックでこの評価を送る")
                     .build());
         }
 

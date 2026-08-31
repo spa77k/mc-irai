@@ -27,6 +27,20 @@ request:
   # 依頼作成のチャット入力を何秒放置したら自動キャンセルするか
   input-timeout-seconds: 120
 
+# 納品ボックス・保管庫の設定
+box:
+  # 納品ボックス・保管庫に入れられないアイテム(Material名)。既定は制限なし。
+  # 例: ["BEDROCK", "COMMAND_BLOCK"]
+  banned-materials: []
+  # 保管庫にこの件数を超えて溜まったら、取り出しを促す警告を出す(チェスト1個分)。
+  # 承認や返却そのものは止めないため、超過分も預かり続ける。
+  vault-slots: 27
+  # 保管庫のアイテムを預かってから何日で削除するか。0以下で無効化(無期限保管)。
+  vault-retention-days: 30
+  # 削除の何日前に一次警告・最終警告を出すか
+  vault-warn-days-before: 3
+  vault-final-warn-days-before: 1
+
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
 
@@ -34,7 +48,7 @@ messages:
   prefix: "&a[依頼所] &r"
   no-permission: "&cこの操作を行う権限がありません。"
   player-only: "&cこのコマンドはプレイヤーのみ実行できます。"
-  unknown-subcommand: "&c不明なサブコマンドです。/irai [create|list|my|cancel]"
+  unknown-subcommand: "&c不明なサブコマンドです。/irai [create|list|my|vault|cancel]"
   economy-not-found: "&c経済プラグイン(Vault)が見つかりません。管理者に連絡してください。"
 
   gui:
@@ -44,6 +58,9 @@ messages:
     my-requests-title: "自分の依頼"
     my-accepted-title: "受注中の依頼"
     rate-title: "評価する"
+    box-title: "納品ボックス"
+    box-view-title: "納品ボックス(閲覧)"
+    vault-title: "保管庫"
 
   create:
     start: "&a依頼作成を開始します。次の入力は依頼所だけが受け取り、全体チャットやDiscordには流れません。(キャンセルは /irai cancel)"
@@ -58,6 +75,8 @@ messages:
     invalid-expire: "&c期限は{min}〜{max}の整数(時間)で入力してください。"
     ask-min-stars: "&a受注に必要な最低星数を入力してください。(0〜{max}、条件なしは0またはそのままEnter)"
     invalid-min-stars: "&c最低星数は0〜{max}の整数で入力してください。"
+    ask-item-delivery: "&aアイテム納品ありの依頼にしますか?(はい/いいえ、そのままEnterでいいえ)"
+    invalid-item-delivery: "&c「はい」か「いいえ」で入力してください。"
     insufficient-funds: "&c所持金が足りません。必要額: {amount}(報酬{reward}+手数料{fee})"
     completed: "&a依頼「{title}」を作成しました。報酬{reward}+手数料{fee}=合計{amount}を徴収し、報酬分を依頼所に預けました。"
     cancelled-input: "&e依頼作成をキャンセルしました。"
@@ -79,6 +98,7 @@ messages:
   complete:
     approved: "&a依頼「{title}」の完了を承認し、{amount}を{worker}に支払いました。"
     not-accepted: "&cこの依頼はまだ受注されていません。"
+    notify-worker: "&a依頼「{title}」が完了承認され、{amount}が支払われました。(評価{stars}/5)"
 
   withdraw:
     success: "&e依頼「{title}」を取り下げ、報酬{amount}を返還しました。"
@@ -105,3 +125,39 @@ messages:
 
   rate:
     success: "&a{worker}を評価しました。(評価{stars}/5)"
+
+  revision:
+    success: "&e依頼「{title}」を差し戻しました。受注者のやり直しをお待ちください。"
+    not-delivered: "&cこの依頼は納品報告済みではないため差し戻せません。"
+    notify-worker: "&e依頼「{title}」が依頼者により差し戻されました。納品ボックスの中身を直して、もう一度報告してください。"
+
+  box:
+    created-with-delivery: "&bこの依頼はアイテム納品ありです。受注者が納品ボックスに入れた成果物は、あなたが完了承認したときに保管庫へ届きます。"
+    accepted-with-delivery: "&bこの依頼はアイテム納品ありです。「自分の依頼」から納品ボックスを開いて成果物を入れてください。"
+    opened-editable: "&a納品ボックスを開きました。チェストと同じように出し入れでき、内容は自動保存されます。"
+    opened-readonly: "&7納品ボックスの中身を表示しています。この画面から取り出すことはできません。"
+    locked: "&e納品ボックスを固定しました。承認または差し戻しがあるまで出し入れできません。"
+    empty-on-deliver: "&cアイテム納品ありの依頼です。納品ボックスにアイテムを入れてから報告してください。"
+    banned-material: "&cこのアイテムは納品ボックスに入れられません。手元に戻しました。"
+    no-longer-editable: "&c依頼の状態が変わったため、納品ボックスの変更は保存されませんでした。保管庫を確認してください。"
+    moved-to-vault: "&a納品物{count}件をあなたの保管庫に移しました。/irai vault から受け取ってください。"
+    returned: "&e依頼「{title}」の納品ボックスにあった{count}件を、あなたの保管庫へ返却しました。"
+
+  vault:
+    empty: "&e保管庫に受け取り待ちのアイテムはありません。"
+    received: "&a{item}を受け取りました。"
+    inventory-full: "&cインベントリに空きがありません。受け取れなかった分は保管庫に残っています。"
+    broken: "&cこのアイテムのデータを復元できなかったため、保管庫から取り除きました。管理者に連絡してください。"
+    deposited: "&e{item}を保管庫に預けました。/irai vault から受け取ってください。"
+    crowded: "&e保管庫に{count}件たまっています(目安{limit}件)。/irai vault から受け取ってください。"
+    expiring: "&e保管庫の「{reason}」はあと{days}日で削除されます。/irai vault から受け取ってください。"
+    expired: "&c保管庫の「{reason}」は保管期限({days}日)を過ぎたため削除されました。"
+
+  admin:
+    usage: "&c使い方: /irai admin cancel <依頼ID>"
+    invalid-id: "&c依頼IDは数値で指定してください。({id})"
+    not-found: "&c依頼ID {id} は見つかりませんでした。"
+    not-cancellable: "&c依頼ID {id} は既に完了・取り下げ・期限切れのため強制終了できません。"
+    cancelled: "&e依頼ID {id}「{title}」を強制終了しました。報酬{amount}を依頼者へ返還し、納品ボックスの中身は受注者へ返しました。"
+    notify-requester: "&c依頼「{title}」は運営により強制終了され、報酬{amount}が返還されました。"
+    notify-worker: "&c受注していた依頼「{title}」は運営により強制終了されました。納品ボックスの中身は保管庫へ返しました。"

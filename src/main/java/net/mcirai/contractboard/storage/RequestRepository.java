@@ -21,11 +21,12 @@ public class RequestRepository {
     }
 
     public Request insert(UUID requesterId, String requesterName, String title, String description,
-                           double reward, long createdAt, long expiresAt, int minStars) throws SQLException {
+                           double reward, long createdAt, long expiresAt, int minStars,
+                           boolean itemDelivery) throws SQLException {
         String sql = """
             INSERT INTO requests (requester_id, requester_name, title, description, reward,
-                created_at, expires_at, status, rated, min_stars)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                created_at, expires_at, status, rated, min_stars, item_delivery)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             """;
         Connection connection = database.getConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -38,12 +39,14 @@ public class RequestRepository {
             statement.setLong(7, expiresAt);
             statement.setString(8, RequestStatus.OPEN.name());
             statement.setInt(9, minStars);
+            statement.setInt(10, itemDelivery ? 1 : 0);
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 keys.next();
                 int id = keys.getInt(1);
                 return new Request(id, requesterId, requesterName, title, description, reward,
-                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false, 0, 0, false, minStars);
+                        createdAt, expiresAt, RequestStatus.OPEN, null, null, false, 0, 0, false, minStars,
+                        itemDelivery);
             }
         }
     }
@@ -221,8 +224,45 @@ public class RequestRepository {
         }
     }
 
+    /**
+     * 納品報告済みの依頼を受注中へ戻す(依頼者による差し戻し)。
+     * accepted_at を現在時刻に振り直すことで、受注放置の強制差し戻しタイマーもやり直しになる。
+     */
+    public boolean revertToAccepted(int id, long acceptedAt) throws SQLException {
+        String sql = """
+            UPDATE requests SET status = ?, accepted_at = ?, delivered_at = NULL, reminder_sent = 0
+            WHERE id = ? AND status = ?
+            """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.ACCEPTED.name());
+            statement.setLong(2, acceptedAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.DELIVERED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    /** 運営による強制終了。募集中・受注中・納品報告済みのいずれからでも取り下げ扱いで閉じる。 */
+    public boolean adminCancel(int id, long closedAt) throws SQLException {
+        String sql = """
+            UPDATE requests SET status = ?, closed_at = ?
+            WHERE id = ? AND status IN (?, ?, ?)
+            """;
+        try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
+            statement.setString(1, RequestStatus.WITHDRAWN.name());
+            statement.setLong(2, closedAt);
+            statement.setInt(3, id);
+            statement.setString(4, RequestStatus.OPEN.name());
+            statement.setString(5, RequestStatus.ACCEPTED.name());
+            statement.setString(6, RequestStatus.DELIVERED.name());
+            return statement.executeUpdate() > 0;
+        }
+    }
+
     public int deleteClosedBefore(long closedBefore) throws SQLException {
-        String sql = "DELETE FROM requests WHERE status IN (?, ?, ?) AND closed_at <= ?";
+        String sql = """
+            DELETE FROM requests WHERE status IN (?, ?, ?) AND closed_at <= ?
+            """;
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, RequestStatus.COMPLETED.name());
             statement.setString(2, RequestStatus.WITHDRAWN.name());
@@ -311,7 +351,8 @@ public class RequestRepository {
                 rs.getLong("accepted_at"),
                 rs.getLong("delivered_at"),
                 rs.getInt("reminder_sent") == 1,
-                rs.getInt("min_stars")
+                rs.getInt("min_stars"),
+                rs.getInt("item_delivery") == 1
         );
     }
 }

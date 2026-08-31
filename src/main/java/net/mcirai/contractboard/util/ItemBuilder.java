@@ -17,6 +17,11 @@ public class ItemBuilder {
         this.meta = itemStack.getItemMeta();
     }
 
+    public ItemBuilder(ItemStack source) {
+        this.itemStack = source.clone();
+        this.meta = itemStack.getItemMeta();
+    }
+
     public ItemBuilder name(String name) {
         meta.setDisplayName(name);
         return this;

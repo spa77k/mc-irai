@@ -60,12 +60,46 @@ public class Database {
                     created_at INTEGER NOT NULL
                 )
                 """);
+            statement.execute("""
+                CREATE TABLE IF NOT EXISTS delivery_box_items (
+                    request_id INTEGER NOT NULL,
+                    slot INTEGER NOT NULL,
+                    item_data TEXT NOT NULL,
+                    PRIMARY KEY (request_id, slot)
+                )
+                """);
+            statement.execute("""
+                CREATE TABLE IF NOT EXISTS vault_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_uuid TEXT NOT NULL,
+                    owner_name TEXT NOT NULL,
+                    item_data TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    reason TEXT NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    warn_stage INTEGER NOT NULL DEFAULT 0
+                )
+                """);
+            statement.execute("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    owner_uuid TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+                """);
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_vault_items_owner "
+                    + "ON vault_items(owner_uuid)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_notifications_owner "
+                    + "ON notifications(owner_uuid)");
         }
         ensureColumn("requests", "accepted_at", "INTEGER");
         ensureColumn("requests", "delivered_at", "INTEGER");
         ensureColumn("requests", "reminder_sent", "INTEGER NOT NULL DEFAULT 0");
         ensureColumn("requests", "closed_at", "INTEGER");
         ensureColumn("requests", "min_stars", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn("requests", "item_delivery", "INTEGER NOT NULL DEFAULT 0");
+        ensureColumn("vault_items", "warn_stage", "INTEGER NOT NULL DEFAULT 0");
     }
 
     private void ensureColumn(String table, String column, String definition) throws SQLException {

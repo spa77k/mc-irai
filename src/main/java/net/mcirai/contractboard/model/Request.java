@@ -20,11 +20,13 @@ public class Request {
     private long deliveredAt;
     private boolean reminderSent;
     private final int minStars;
+    private final boolean itemDelivery;
 
     public Request(int id, UUID requesterId, String requesterName, String title, String description,
                     double reward, long createdAt, long expiresAt, RequestStatus status,
                     UUID workerId, String workerName, boolean rated,
-                    long acceptedAt, long deliveredAt, boolean reminderSent, int minStars) {
+                    long acceptedAt, long deliveredAt, boolean reminderSent, int minStars,
+                    boolean itemDelivery) {
         this.id = id;
         this.requesterId = requesterId;
         this.requesterName = requesterName;
@@ -41,6 +43,7 @@ public class Request {
         this.deliveredAt = deliveredAt;
         this.reminderSent = reminderSent;
         this.minStars = minStars;
+        this.itemDelivery = itemDelivery;
     }
 
     public int getId() {
@@ -137,5 +140,14 @@ public class Request {
 
     public int getMinStars() {
         return minStars;
+    }
+
+    public boolean isItemDelivery() {
+        return itemDelivery;
+    }
+
+    /** 納品ボックスが固定される状態か。納品報告後は受注者が中身を出し入れできない。 */
+    public boolean isBoxLocked() {
+        return status != RequestStatus.ACCEPTED;
     }
 }

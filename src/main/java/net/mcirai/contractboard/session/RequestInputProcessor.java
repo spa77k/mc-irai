@@ -113,9 +113,19 @@ public class RequestInputProcessor {
                     return false;
                 }
                 session.setMinStars(minStars);
+                session.setStep(CreateRequestSession.Step.ITEM_DELIVERY);
+                return true;
+            }
+            case ITEM_DELIVERY -> {
+                Boolean itemDelivery = parseYesNo(input);
+                if (itemDelivery == null) {
+                    messages.send(player, "create.invalid-item-delivery");
+                    return false;
+                }
+                session.setItemDelivery(itemDelivery);
                 sessionManager.end(player.getUniqueId());
                 requestService.createRequest(player, session.getTitle(), session.getDescription(),
-                        session.getReward(), session.getExpireHours(), minStars);
+                        session.getReward(), session.getExpireHours(), session.getMinStars(), itemDelivery);
                 return true;
             }
         }
@@ -152,7 +162,22 @@ public class RequestInputProcessor {
                     "max", String.valueOf(maxExpire)));
             case MIN_STARS -> messages.get("prefix")
                     + messages.get("create.ask-min-stars", Map.of("max", String.valueOf(maxMinStars)));
+            case ITEM_DELIVERY -> messages.get("prefix") + messages.get("create.ask-item-delivery");
         };
+    }
+
+    /** 「はい/いいえ」入力の解釈。何も入力せずEnterした場合はアイテム納品なしとして扱う。 */
+    private Boolean parseYesNo(String input) {
+        String normalized = input.trim().toLowerCase();
+        if (normalized.isEmpty() || normalized.equals("いいえ") || normalized.equals("no")
+                || normalized.equals("n") || normalized.equals("なし") || normalized.equals("0")) {
+            return Boolean.FALSE;
+        }
+        if (normalized.equals("はい") || normalized.equals("yes") || normalized.equals("y")
+                || normalized.equals("あり") || normalized.equals("1")) {
+            return Boolean.TRUE;
+        }
+        return null;
     }
 
     private String formatPercent(double rate) {

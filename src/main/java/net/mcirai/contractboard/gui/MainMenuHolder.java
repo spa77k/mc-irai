@@ -6,9 +6,10 @@ import org.jetbrains.annotations.NotNull;
 
 public class MainMenuHolder implements InventoryHolder {
 
-    public static final int SLOT_LIST = 11;
-    public static final int SLOT_CREATE = 13;
-    public static final int SLOT_MY = 15;
+    public static final int SLOT_LIST = 10;
+    public static final int SLOT_CREATE = 12;
+    public static final int SLOT_MY = 14;
+    public static final int SLOT_VAULT = 16;
 
     private Inventory inventory;
 

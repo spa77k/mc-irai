@@ -8,9 +8,12 @@ depend: [Vault]
 commands:
   irai:
     description: 依頼掲示板を開く
-    usage: /irai [create|list|my|cancel]
+    usage: /irai [create|list|my|vault|cancel|admin cancel <依頼ID>]
 
 permissions:
   irai.use:
-    description: 依頼掲示板の利用(作成・受注・評価)
+    description: 依頼掲示板の利用(作成・受注・評価・納品ボックス・保管庫)
     default: true
+  irai.admin:
+    description: 依頼の強制終了などの運営操作
+    default: op

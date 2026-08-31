@@ -7,7 +7,8 @@ public class CreateRequestSession {
         DESCRIPTION,
         REWARD,
         EXPIRE,
-        MIN_STARS
+        MIN_STARS,
+        ITEM_DELIVERY
     }
 
     private Step step = Step.TITLE;
@@ -16,6 +17,7 @@ public class CreateRequestSession {
     private double reward;
     private int expireHours;
     private int minStars;
+    private boolean itemDelivery;
 
     public Step getStep() {
         return step;
@@ -63,5 +65,13 @@ public class CreateRequestSession {
 
     public void setMinStars(int minStars) {
         this.minStars = minStars;
+    }
+
+    public boolean isItemDelivery() {
+        return itemDelivery;
+    }
+
+    public void setItemDelivery(boolean itemDelivery) {
+        this.itemDelivery = itemDelivery;
     }
 }

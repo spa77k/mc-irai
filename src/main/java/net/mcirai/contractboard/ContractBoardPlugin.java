@@ -5,13 +5,17 @@ import net.mcirai.contractboard.economy.EconomyService;
 import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.listener.ChatInputListener;
 import net.mcirai.contractboard.listener.GuiListener;
+import net.mcirai.contractboard.listener.PlayerJoinListener;
 import net.mcirai.contractboard.listener.PlayerQuitListener;
 import net.mcirai.contractboard.session.CreateRequestConversation;
 import net.mcirai.contractboard.session.RequestInputProcessor;
 import net.mcirai.contractboard.session.SessionManager;
 import net.mcirai.contractboard.storage.Database;
+import net.mcirai.contractboard.storage.DeliveryBoxRepository;
+import net.mcirai.contractboard.storage.NotificationRepository;
 import net.mcirai.contractboard.storage.RatingRepository;
 import net.mcirai.contractboard.storage.RequestRepository;
+import net.mcirai.contractboard.storage.VaultRepository;
 import net.mcirai.contractboard.task.ExpirationTask;
 import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -40,6 +44,9 @@ public class ContractBoardPlugin extends JavaPlugin {
 
         RequestRepository requestRepository = new RequestRepository(database);
         RatingRepository ratingRepository = new RatingRepository(database);
+        DeliveryBoxRepository deliveryBoxRepository = new DeliveryBoxRepository(database);
+        VaultRepository vaultRepository = new VaultRepository(database);
+        NotificationRepository notificationRepository = new NotificationRepository(database);
         MessageUtil messages = new MessageUtil(getConfig());
 
         EconomyService economyService = new EconomyService();
@@ -48,8 +55,9 @@ public class ContractBoardPlugin extends JavaPlugin {
         }
 
         RequestService requestService = new RequestService(requestRepository, ratingRepository,
+                deliveryBoxRepository, vaultRepository, notificationRepository,
                 economyService, messages, getConfig(), getLogger());
-        GuiManager guiManager = new GuiManager(requestRepository, ratingRepository,
+        GuiManager guiManager = new GuiManager(requestRepository, ratingRepository, requestService,
                 economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();
         RequestInputProcessor requestInputProcessor = new RequestInputProcessor(
@@ -57,15 +65,17 @@ public class ContractBoardPlugin extends JavaPlugin {
         CreateRequestConversation createRequestConversation = new CreateRequestConversation(
                 this, getConfig(), sessionManager, requestInputProcessor, messages);
 
-        IraiCommand iraiCommand = new IraiCommand(guiManager, sessionManager, messages, createRequestConversation);
+        IraiCommand iraiCommand = new IraiCommand(guiManager, requestService, sessionManager, messages,
+                createRequestConversation);
         getCommand("irai").setExecutor(iraiCommand);
         getCommand("irai").setTabCompleter(iraiCommand);
 
         getServer().getPluginManager().registerEvents(
-                new GuiListener(guiManager, requestService, createRequestConversation, this), this);
+                new GuiListener(guiManager, requestService, createRequestConversation, messages, this), this);
         getServer().getPluginManager().registerEvents(
                 new ChatInputListener(this, sessionManager, requestInputProcessor), this);
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(sessionManager), this);
+        getServer().getPluginManager().registerEvents(new PlayerJoinListener(requestService), this);
 
         long intervalTicks = getConfig().getLong("expiration-check-interval-seconds", 60) * 20L;
         new ExpirationTask(requestService).runTaskTimer(this, intervalTicks, intervalTicks);
