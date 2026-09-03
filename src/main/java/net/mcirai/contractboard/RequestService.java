@@ -1,6 +1,7 @@
 package net.mcirai.contractboard;
 
 import net.mcirai.contractboard.economy.EconomyService;
+import net.mcirai.contractboard.event.ContractCreatedEvent;
 import net.mcirai.contractboard.gui.DeliveryBoxHolder;
 import net.mcirai.contractboard.model.Notification;
 import net.mcirai.contractboard.model.Rating;
@@ -95,8 +96,9 @@ public class RequestService {
 
         long now = System.currentTimeMillis();
         long expiresAt = now + expireHours * 3_600_000L;
+        Request createdRequest;
         try {
-            requestRepository.insert(requester.getUniqueId(), requester.getName(),
+            createdRequest = requestRepository.insert(requester.getUniqueId(), requester.getName(),
                     title, description, reward, now, expiresAt, minStars, itemDelivery);
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の作成に失敗しました", e);
@@ -104,6 +106,11 @@ public class RequestService {
             requester.sendMessage(messages.get("prefix") + "§c依頼の作成に失敗しました。徴収額は返却されました。");
             return false;
         }
+
+        // 保存と徴収が両方成功した後にだけ、外部連携向けの通知イベントを発火する
+        Bukkit.getPluginManager().callEvent(new ContractCreatedEvent(createdRequest.getId(),
+                requester.getUniqueId(), requester.getName(), title, reward, economyService.format(reward),
+                expireHours, minStars, itemDelivery));
 
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("title", title);
