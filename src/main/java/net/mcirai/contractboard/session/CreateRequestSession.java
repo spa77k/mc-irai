@@ -7,8 +7,8 @@ public class CreateRequestSession {
         DESCRIPTION,
         REWARD,
         EXPIRE,
-        MIN_STARS,
-        ITEM_DELIVERY
+        /** チャット入力を終え、確認画面で最低星数・アイテム納品を選んで作成を確定する段階。 */
+        CONFIRM
     }
 
     private Step step = Step.TITLE;
@@ -25,6 +25,11 @@ public class CreateRequestSession {
 
     public void setStep(Step step) {
         this.step = step;
+    }
+
+    /** 確認画面の段階ではチャット入力を受け取らない(全体チャットを飲み込まない)。 */
+    public boolean isAwaitingConfirm() {
+        return step == Step.CONFIRM;
     }
 
     public String getTitle() {

@@ -5,6 +5,8 @@ import net.mcirai.contractboard.economy.EconomyService;
 import net.mcirai.contractboard.model.Request;
 import net.mcirai.contractboard.model.RequestStatus;
 import net.mcirai.contractboard.model.VaultItem;
+import net.mcirai.contractboard.session.CreateRequestSession;
+import net.mcirai.contractboard.session.RequestInputProcessor;
 import net.mcirai.contractboard.storage.RatingRepository;
 import net.mcirai.contractboard.storage.RequestRepository;
 import net.mcirai.contractboard.util.ItemBuilder;
@@ -543,6 +545,99 @@ public class GuiManager {
                 .build());
 
         player.openInventory(inventory);
+    }
+
+    /** 依頼作成の確認画面を開く。ここで最低星数・アイテム納品の有無を切り替えて作成を確定する。 */
+    public void openCreateConfirm(Player player, CreateRequestSession session) {
+        CreateConfirmHolder holder = new CreateConfirmHolder();
+        Inventory inventory = Bukkit.createInventory(holder, 27, messages.get("gui.create-confirm-title"));
+        holder.setInventory(inventory);
+
+        inventory.setItem(CreateConfirmHolder.SLOT_CANCEL, new ItemBuilder(Material.BARRIER)
+                .name("§c作成をやめる")
+                .lore("§7入力内容を破棄します")
+                .build());
+        inventory.setItem(CreateConfirmHolder.SLOT_RESTART, new ItemBuilder(Material.WRITABLE_BOOK)
+                .name("§e最初から入力し直す")
+                .lore("§7タイトルからチャット入力をやり直します")
+                .build());
+        renderCreateConfirm(inventory, player, session);
+
+        player.openInventory(inventory);
+    }
+
+    /**
+     * 確認画面の可変部分(内容・切り替えボタン・作成ボタン)を描き直す。
+     * openInventory を呼び直すとカーソル位置がリセットされるため、切り替え時はスロットの差し替えだけで済ませる。
+     */
+    public void renderCreateConfirm(Inventory inventory, Player player, CreateRequestSession session) {
+        double feeRate = config.getDouble("request.fee-rate", 0.0);
+        double reward = session.getReward();
+        double fee = reward * feeRate;
+        double total = reward + fee;
+        boolean ready = economyService.isReady();
+        boolean affordable = !ready || economyService.has(player, total);
+
+        List<String> summary = new ArrayList<>();
+        summary.add("§7報酬: §e" + formatMoney(reward));
+        summary.add("§7手数料(" + RequestInputProcessor.formatPercent(feeRate) + "%): §e" + formatMoney(fee));
+        summary.add("§7合計徴収額: §6" + formatMoney(total));
+        if (ready) {
+            summary.add("§7所持金: " + (affordable ? "§f" : "§c")
+                    + economyService.format(economyService.getBalance(player)));
+        }
+        summary.add("§7期限: §f作成から" + session.getExpireHours() + "時間");
+        summary.add("");
+        summary.add("§f" + session.getDescription());
+        inventory.setItem(CreateConfirmHolder.SLOT_SUMMARY, new ItemBuilder(Material.WRITTEN_BOOK)
+                .name("§f" + session.getTitle())
+                .lore(summary)
+                .build());
+
+        inventory.setItem(CreateConfirmHolder.SLOT_ITEM_DELIVERY, session.isItemDelivery()
+                ? new ItemBuilder(Material.LIME_DYE)
+                        .name("§aアイテム納品: あり")
+                        .lore("§7受注者が納品ボックスに成果物を入れ、",
+                                "§7完了承認すると保管庫に届きます",
+                                "",
+                                "§eクリックで切り替え")
+                        .build()
+                : new ItemBuilder(Material.GRAY_DYE)
+                        .name("§7アイテム納品: なし")
+                        .lore("§7受注者は報告だけで納品します",
+                                "",
+                                "§eクリックで切り替え")
+                        .build());
+
+        int maxMinStars = config.getInt("request.min-stars-max", 5);
+        if (maxMinStars > 0) {
+            int stars = session.getMinStars();
+            ItemStack starItem = new ItemBuilder(stars > 0 ? Material.NETHER_STAR : Material.GRAY_DYE)
+                    .name(stars > 0
+                            ? "§e受注条件: " + "★".repeat(stars) + "☆".repeat(Math.max(0, maxMinStars - stars)) + " 以上"
+                            : "§7受注条件: なし")
+                    .lore("§7平均評価がこれ未満の人は受注できません",
+                            "§7(評価実績がない人は対象外)",
+                            "",
+                            "§e左クリックで+1 / 右クリックで-1")
+                    .build();
+            starItem.setAmount(Math.max(1, stars));
+            inventory.setItem(CreateConfirmHolder.SLOT_MIN_STARS, starItem);
+        }
+
+        inventory.setItem(CreateConfirmHolder.SLOT_CREATE, affordable
+                ? new ItemBuilder(Material.LIME_WOOL)
+                        .name("§aこの内容で依頼を作成する")
+                        .lore("§7合計 §6" + formatMoney(total) + " §7を徴収します")
+                        .build()
+                : new ItemBuilder(Material.RED_WOOL)
+                        .name("§c所持金が足りません")
+                        .lore("§7必要額: §6" + formatMoney(total))
+                        .build());
+    }
+
+    private String formatMoney(double amount) {
+        return economyService.isReady() ? economyService.format(amount) : String.valueOf(amount);
     }
 
     public void openRating(Player player, int requestId) {

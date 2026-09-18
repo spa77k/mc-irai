@@ -2,6 +2,7 @@ package net.mcirai.contractboard.listener;
 
 import net.mcirai.contractboard.RequestService;
 import net.mcirai.contractboard.gui.ConfirmHolder;
+import net.mcirai.contractboard.gui.CreateConfirmHolder;
 import net.mcirai.contractboard.gui.DeliveryBoxHolder;
 import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.gui.MainMenuHolder;
@@ -13,6 +14,8 @@ import net.mcirai.contractboard.gui.VaultHolder;
 import net.mcirai.contractboard.model.Request;
 import net.mcirai.contractboard.model.RequestStatus;
 import net.mcirai.contractboard.session.CreateRequestConversation;
+import net.mcirai.contractboard.session.CreateRequestSession;
+import net.mcirai.contractboard.session.SessionManager;
 import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -36,15 +39,17 @@ public class GuiListener implements Listener {
     private final GuiManager guiManager;
     private final RequestService requestService;
     private final CreateRequestConversation createRequestConversation;
+    private final SessionManager sessionManager;
     private final MessageUtil messages;
     private final Plugin plugin;
 
     public GuiListener(GuiManager guiManager, RequestService requestService,
-                        CreateRequestConversation createRequestConversation, MessageUtil messages,
-                        Plugin plugin) {
+                        CreateRequestConversation createRequestConversation, SessionManager sessionManager,
+                        MessageUtil messages, Plugin plugin) {
         this.guiManager = guiManager;
         this.requestService = requestService;
         this.createRequestConversation = createRequestConversation;
+        this.sessionManager = sessionManager;
         this.messages = messages;
         this.plugin = plugin;
     }
@@ -65,7 +70,8 @@ public class GuiListener implements Listener {
         if (!(holder instanceof MainMenuHolder) && !(holder instanceof RequestListHolder)
                 && !(holder instanceof RequestDetailHolder) && !(holder instanceof MyRequestsHolder)
                 && !(holder instanceof RatingHolder) && !(holder instanceof VaultHolder)
-                && !(holder instanceof ConfirmHolder)) {
+                && !(holder instanceof ConfirmHolder)
+                && !(holder instanceof CreateConfirmHolder)) {
             return;
         }
         event.setCancelled(true);
@@ -88,6 +94,8 @@ public class GuiListener implements Listener {
             handleVault(player, vaultHolder, slot);
         } else if (holder instanceof ConfirmHolder confirmHolder) {
             handleConfirm(player, confirmHolder, slot);
+        } else if (holder instanceof CreateConfirmHolder) {
+            handleCreateConfirm(player, event.getInventory(), slot, event.isRightClick());
         }
     }
 
@@ -112,6 +120,15 @@ public class GuiListener implements Listener {
 
     @EventHandler
     public void onClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof CreateConfirmHolder
+                && event.getPlayer() instanceof Player player) {
+            // 作成・破棄ではなく単に閉じただけなら入力内容は残し、戻り方を案内する
+            CreateRequestSession session = sessionManager.get(player.getUniqueId());
+            if (session != null && session.isAwaitingConfirm()) {
+                messages.send(player, "create.confirm-closed");
+            }
+            return;
+        }
         if (!(event.getInventory().getHolder() instanceof DeliveryBoxHolder boxHolder)) {
             return;
         }
@@ -320,6 +337,56 @@ public class GuiListener implements Listener {
             }
         }
         guiManager.openMyRequests(player);
+    }
+
+    private void handleCreateConfirm(Player player, Inventory inventory, int slot, boolean rightClick) {
+        CreateRequestSession session = sessionManager.get(player.getUniqueId());
+        if (session == null || !session.isAwaitingConfirm()) {
+            player.closeInventory();
+            return;
+        }
+        switch (slot) {
+            case CreateConfirmHolder.SLOT_ITEM_DELIVERY -> {
+                session.setItemDelivery(!session.isItemDelivery());
+                guiManager.renderCreateConfirm(inventory, player, session);
+            }
+            case CreateConfirmHolder.SLOT_MIN_STARS -> {
+                int maxMinStars = plugin.getConfig().getInt("request.min-stars-max", 5);
+                if (maxMinStars <= 0) {
+                    return;
+                }
+                // 0〜上限を循環させる。左クリックで増やし、右クリックで減らす
+                int range = maxMinStars + 1;
+                int next = ((session.getMinStars() + (rightClick ? -1 : 1)) % range + range) % range;
+                session.setMinStars(next);
+                guiManager.renderCreateConfirm(inventory, player, session);
+            }
+            case CreateConfirmHolder.SLOT_CANCEL -> {
+                sessionManager.end(player.getUniqueId());
+                player.closeInventory();
+                messages.send(player, "create.cancelled-input");
+            }
+            case CreateConfirmHolder.SLOT_RESTART -> {
+                sessionManager.end(player.getUniqueId());
+                player.closeInventory();
+                Bukkit.getScheduler().runTask(plugin, () -> createRequestConversation.start(player));
+            }
+            case CreateConfirmHolder.SLOT_CREATE -> {
+                boolean created = requestService.createRequest(player, session.getTitle(),
+                        session.getDescription(), session.getReward(), session.getExpireHours(),
+                        session.getMinStars(), session.isItemDelivery());
+                if (created) {
+                    // セッションを先に消しておくと、閉じたときの「入力内容は残っています」案内が出ない
+                    sessionManager.end(player.getUniqueId());
+                    player.closeInventory();
+                } else {
+                    // 所持金不足などで作成できなかった場合は、最新の所持金を反映して画面に留まる
+                    guiManager.renderCreateConfirm(inventory, player, session);
+                }
+            }
+            default -> {
+            }
+        }
     }
 
     private void handleRating(Player player, RatingHolder holder, int slot) {

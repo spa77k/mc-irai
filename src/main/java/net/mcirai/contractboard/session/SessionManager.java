@@ -27,6 +27,11 @@ public class SessionManager {
         conversations.put(playerId, conversation);
     }
 
+    /** チャット入力の会話だけを手放す。セッション(入力内容)は確認画面のために残す。 */
+    public void detachConversation(UUID playerId) {
+        conversations.remove(playerId);
+    }
+
     public void end(UUID playerId) {
         sessions.remove(playerId);
         Conversation conversation = conversations.remove(playerId);

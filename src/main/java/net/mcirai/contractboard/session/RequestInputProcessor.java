@@ -1,24 +1,31 @@
 package net.mcirai.contractboard.session;
 
-import net.mcirai.contractboard.RequestService;
+import net.mcirai.contractboard.economy.EconomyService;
+import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.util.MessageUtil;
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
 
 import java.util.Map;
 
 public class RequestInputProcessor {
 
+    private final Plugin plugin;
     private final FileConfiguration config;
     private final SessionManager sessionManager;
-    private final RequestService requestService;
+    private final EconomyService economyService;
+    private final GuiManager guiManager;
     private final MessageUtil messages;
 
-    public RequestInputProcessor(FileConfiguration config, SessionManager sessionManager,
-                                  RequestService requestService, MessageUtil messages) {
+    public RequestInputProcessor(Plugin plugin, FileConfiguration config, SessionManager sessionManager,
+                                  EconomyService economyService, GuiManager guiManager, MessageUtil messages) {
+        this.plugin = plugin;
         this.config = config;
         this.sessionManager = sessionManager;
-        this.requestService = requestService;
+        this.economyService = economyService;
+        this.guiManager = guiManager;
         this.messages = messages;
     }
 
@@ -34,7 +41,6 @@ public class RequestInputProcessor {
         double maxReward = config.getDouble("request.max-reward", 1_000_000);
         int minExpire = config.getInt("request.min-expire-hours", 1);
         int maxExpire = config.getInt("request.max-expire-hours", 168);
-        int maxMinStars = config.getInt("request.min-stars-max", 5);
 
         switch (session.getStep()) {
             case TITLE -> {
@@ -72,6 +78,16 @@ public class RequestInputProcessor {
                             "max", String.valueOf((int) maxReward)));
                     return false;
                 }
+                // 残りの項目を入力し終えてから所持金不足で弾かれないよう、この時点で確認する
+                double fee = reward * config.getDouble("request.fee-rate", 0.0);
+                if (economyService.isReady() && !economyService.has(player, reward + fee)) {
+                    messages.send(player, "create.insufficient-funds-input", Map.of(
+                            "amount", economyService.format(reward + fee),
+                            "reward", economyService.format(reward),
+                            "fee", economyService.format(fee),
+                            "balance", economyService.format(economyService.getBalance(player))));
+                    return false;
+                }
                 session.setReward(reward);
                 session.setStep(CreateRequestSession.Step.EXPIRE);
                 return true;
@@ -93,46 +109,23 @@ public class RequestInputProcessor {
                     return false;
                 }
                 session.setExpireHours(hours);
-                session.setStep(CreateRequestSession.Step.MIN_STARS);
-                return true;
-            }
-            case MIN_STARS -> {
-                int minStars;
-                if (input.isEmpty() || input.equals("なし") || input.equals("0")) {
-                    minStars = 0;
-                } else {
-                    try {
-                        minStars = Integer.parseInt(input);
-                    } catch (NumberFormatException e) {
-                        messages.send(player, "create.invalid-min-stars", Map.of("max", String.valueOf(maxMinStars)));
-                        return false;
+                session.setStep(CreateRequestSession.Step.CONFIRM);
+                // 最低星数・アイテム納品の有無は確認画面で切り替える。会話の終了処理と重ならないよう次tickで開く
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline() && sessionManager.get(player.getUniqueId()) == session) {
+                        guiManager.openCreateConfirm(player, session);
                     }
-                }
-                if (minStars < 0 || minStars > maxMinStars) {
-                    messages.send(player, "create.invalid-min-stars", Map.of("max", String.valueOf(maxMinStars)));
-                    return false;
-                }
-                session.setMinStars(minStars);
-                session.setStep(CreateRequestSession.Step.ITEM_DELIVERY);
+                });
                 return true;
             }
-            case ITEM_DELIVERY -> {
-                Boolean itemDelivery = parseYesNo(input);
-                if (itemDelivery == null) {
-                    messages.send(player, "create.invalid-item-delivery");
-                    return false;
-                }
-                session.setItemDelivery(itemDelivery);
-                sessionManager.end(player.getUniqueId());
-                requestService.createRequest(player, session.getTitle(), session.getDescription(),
-                        session.getReward(), session.getExpireHours(), session.getMinStars(), itemDelivery);
-                return true;
+            case CONFIRM -> {
+                return false;
             }
         }
         return false;
     }
 
-    public String promptText(CreateRequestSession session) {
+    public String promptText(Player player, CreateRequestSession session) {
         if (session == null) {
             return "";
         }
@@ -143,7 +136,6 @@ public class RequestInputProcessor {
         double maxReward = config.getDouble("request.max-reward", 1_000_000);
         int minExpire = config.getInt("request.min-expire-hours", 1);
         int maxExpire = config.getInt("request.max-expire-hours", 168);
-        int maxMinStars = config.getInt("request.min-stars-max", 5);
 
         return switch (session.getStep()) {
             case TITLE -> messages.get("prefix")
@@ -152,35 +144,22 @@ public class RequestInputProcessor {
                     + messages.get("create.ask-description", Map.of("max", String.valueOf(maxDescription)));
             case REWARD -> {
                 String feePercent = formatPercent(config.getDouble("request.fee-rate", 0.0));
+                String balance = economyService.isReady()
+                        ? economyService.format(economyService.getBalance(player)) : "?";
                 yield messages.get("prefix") + messages.get("create.ask-reward", Map.of(
                         "min", String.valueOf((int) minReward),
                         "max", String.valueOf((int) maxReward),
-                        "fee-percent", feePercent));
+                        "fee-percent", feePercent,
+                        "balance", balance));
             }
             case EXPIRE -> messages.get("prefix") + messages.get("create.ask-expire", Map.of(
                     "min", String.valueOf(minExpire),
                     "max", String.valueOf(maxExpire)));
-            case MIN_STARS -> messages.get("prefix")
-                    + messages.get("create.ask-min-stars", Map.of("max", String.valueOf(maxMinStars)));
-            case ITEM_DELIVERY -> messages.get("prefix") + messages.get("create.ask-item-delivery");
+            case CONFIRM -> "";
         };
     }
 
-    /** 「はい/いいえ」入力の解釈。何も入力せずEnterした場合はアイテム納品なしとして扱う。 */
-    private Boolean parseYesNo(String input) {
-        String normalized = input.trim().toLowerCase();
-        if (normalized.isEmpty() || normalized.equals("いいえ") || normalized.equals("no")
-                || normalized.equals("n") || normalized.equals("なし") || normalized.equals("0")) {
-            return Boolean.FALSE;
-        }
-        if (normalized.equals("はい") || normalized.equals("yes") || normalized.equals("y")
-                || normalized.equals("あり") || normalized.equals("1")) {
-            return Boolean.TRUE;
-        }
-        return null;
-    }
-
-    private String formatPercent(double rate) {
+    public static String formatPercent(double rate) {
         double percent = rate * 100;
         if (percent == Math.floor(percent)) {
             return String.valueOf((int) percent);

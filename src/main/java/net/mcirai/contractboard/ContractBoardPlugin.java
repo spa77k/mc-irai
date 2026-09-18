@@ -63,9 +63,9 @@ public class ContractBoardPlugin extends JavaPlugin {
                 economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();
         RequestInputProcessor requestInputProcessor = new RequestInputProcessor(
-                getConfig(), sessionManager, requestService, messages);
+                this, getConfig(), sessionManager, economyService, guiManager, messages);
         CreateRequestConversation createRequestConversation = new CreateRequestConversation(
-                this, getConfig(), sessionManager, requestInputProcessor, messages);
+                this, getConfig(), sessionManager, requestInputProcessor, guiManager, messages);
 
         IraiCommand iraiCommand = new IraiCommand(guiManager, requestService, sessionManager, messages,
                 createRequestConversation);
@@ -73,7 +73,8 @@ public class ContractBoardPlugin extends JavaPlugin {
         getCommand("irai").setTabCompleter(iraiCommand);
 
         getServer().getPluginManager().registerEvents(
-                new GuiListener(guiManager, requestService, createRequestConversation, messages, this), this);
+                new GuiListener(guiManager, requestService, createRequestConversation, sessionManager,
+                        messages, this), this);
         getServer().getPluginManager().registerEvents(
                 new ChatInputListener(this, sessionManager, requestInputProcessor), this);
         getServer().getPluginManager().registerEvents(new PlayerQuitListener(sessionManager), this);

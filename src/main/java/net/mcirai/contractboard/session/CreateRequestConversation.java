@@ -1,5 +1,6 @@
 package net.mcirai.contractboard.session;
 
+import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.util.MessageUtil;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.conversations.Conversation;
@@ -15,13 +16,16 @@ public class CreateRequestConversation {
 
     private final SessionManager sessionManager;
     private final RequestInputProcessor processor;
+    private final GuiManager guiManager;
     private final MessageUtil messages;
     private final ConversationFactory factory;
 
     public CreateRequestConversation(Plugin plugin, FileConfiguration config, SessionManager sessionManager,
-                                      RequestInputProcessor processor, MessageUtil messages) {
+                                      RequestInputProcessor processor, GuiManager guiManager,
+                                      MessageUtil messages) {
         this.sessionManager = sessionManager;
         this.processor = processor;
+        this.guiManager = guiManager;
         this.messages = messages;
         this.factory = new ConversationFactory(plugin)
                 .withModality(false)
@@ -32,6 +36,12 @@ public class CreateRequestConversation {
     }
 
     public void start(Player player) {
+        // 確認画面を閉じただけの入力は捨てずに、確認画面へ戻す
+        CreateRequestSession pending = sessionManager.get(player.getUniqueId());
+        if (pending != null && pending.isAwaitingConfirm()) {
+            guiManager.openCreateConfirm(player, pending);
+            return;
+        }
         // 進行中の入力が残っていると新しい会話が待ち行列に入り、キャンセル後も発言を飲み込んでしまうため先に終了させる
         sessionManager.end(player.getUniqueId());
         sessionManager.start(player.getUniqueId());
@@ -62,7 +72,7 @@ public class CreateRequestConversation {
                 return "";
             }
             CreateRequestSession session = sessionManager.get(player.getUniqueId());
-            return processor.promptText(session);
+            return processor.promptText(player, session);
         }
 
         @Override
@@ -71,7 +81,13 @@ public class CreateRequestConversation {
                 return Prompt.END_OF_CONVERSATION;
             }
             processor.handle(player, input == null ? "" : input.trim());
-            if (!sessionManager.has(player.getUniqueId())) {
+            CreateRequestSession session = sessionManager.get(player.getUniqueId());
+            if (session == null) {
+                return Prompt.END_OF_CONVERSATION;
+            }
+            if (session.isAwaitingConfirm()) {
+                // チャット入力はここで終わり。セッションは確認画面のために残す
+                sessionManager.detachConversation(player.getUniqueId());
                 return Prompt.END_OF_CONVERSATION;
             }
             return this;

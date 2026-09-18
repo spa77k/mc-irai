@@ -30,7 +30,9 @@ public class ChatInputListener implements Listener {
     @EventHandler(priority = EventPriority.LOWEST)
     public void onChat(AsyncChatEvent event) {
         Player player = event.getPlayer();
-        if (!sessionManager.has(player.getUniqueId())) {
+        CreateRequestSession session = sessionManager.get(player.getUniqueId());
+        // 確認画面の段階では入力を受け付けないので、通常のチャットとして流す
+        if (session == null || session.isAwaitingConfirm()) {
             return;
         }
         event.setCancelled(true);
@@ -42,8 +44,8 @@ public class ChatInputListener implements Listener {
     private void handleInput(Player player, String input) {
         processor.handle(player, input);
         CreateRequestSession session = sessionManager.get(player.getUniqueId());
-        if (session != null) {
-            player.sendMessage(processor.promptText(session));
+        if (session != null && !session.isAwaitingConfirm()) {
+            player.sendMessage(processor.promptText(player, session));
         }
     }
 }
