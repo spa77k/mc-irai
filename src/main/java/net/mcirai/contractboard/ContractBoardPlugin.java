@@ -18,6 +18,7 @@ import net.mcirai.contractboard.storage.RequestRepository;
 import net.mcirai.contractboard.storage.VaultRepository;
 import net.mcirai.contractboard.task.ExpirationTask;
 import net.mcirai.contractboard.util.MessageUtil;
+import net.mcirai.contractboard.util.Notifier;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.SQLException;
@@ -48,6 +49,7 @@ public class ContractBoardPlugin extends JavaPlugin {
         VaultRepository vaultRepository = new VaultRepository(database);
         NotificationRepository notificationRepository = new NotificationRepository(database);
         MessageUtil messages = new MessageUtil(getConfig());
+        Notifier notifier = new Notifier(getConfig(), messages);
 
         EconomyService economyService = new EconomyService();
         if (!economyService.setup(this)) {
@@ -56,7 +58,7 @@ public class ContractBoardPlugin extends JavaPlugin {
 
         RequestService requestService = new RequestService(requestRepository, ratingRepository,
                 deliveryBoxRepository, vaultRepository, notificationRepository,
-                economyService, messages, getConfig(), getLogger());
+                economyService, messages, notifier, getConfig(), getLogger());
         GuiManager guiManager = new GuiManager(requestRepository, ratingRepository, requestService,
                 economyService, messages, getConfig(), getLogger());
         SessionManager sessionManager = new SessionManager();

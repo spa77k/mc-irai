@@ -27,6 +27,14 @@ public class MessageUtil {
         return colorize(raw);
     }
 
+    /** 文言が設定されていなければnullを返す(キー名をそのまま表示させたくない箇所向け)。 */
+    public String getOrNull(String path, Map<String, String> placeholders) {
+        if (config.getString("messages." + path) == null) {
+            return null;
+        }
+        return get(path, placeholders);
+    }
+
     public void send(CommandSender sender, String path) {
         sender.sendMessage(get("prefix") + get(path));
     }

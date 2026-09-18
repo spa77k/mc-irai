@@ -41,6 +41,30 @@ box:
   vault-warn-days-before: 3
   vault-final-warn-days-before: 1
 
+# 通知の効果音・アクションバー
+# チャットは他の発言ですぐ流れるため、受注・納品報告・承認などの節目を音と画面中央下の表示でも知らせる。
+notify:
+  # 効果音を鳴らすか
+  sound: true
+  # アクションバー(ホットバーの上)に通知の要約を出すか。文言は messages.action-bar で変更できる。
+  action-bar: true
+  # 効果音の音量
+  volume: 0.8
+  # 通知の種類ごとの効果音。Minecraftのサウンド名(小文字・ドット区切り)で指定する。"none" で無音。
+  sounds:
+    accepted: "entity.experience_orb.pickup"      # 自分の依頼が受注された
+    delivered: "block.note_block.pling"           # 納品完了の報告が届いた
+    approved: "entity.player.levelup"             # 完了承認され報酬が入った(自動承認含む)
+    auto-approved: "block.note_block.chime"       # 放置していた納品報告が自動承認された
+    revision: "block.note_block.didgeridoo"       # 納品内容を差し戻された
+    cancelled: "block.note_block.bass"            # 受注の取り消し・運営による強制終了
+    expired: "block.note_block.bass"              # 依頼が期限切れになった
+    returned: "entity.item.pickup"                # 納品物が保管庫へ戻った
+    reminder: "block.note_block.hat"              # 放置の催促・ログイン時のまとめ通知
+    vault-warning: "block.note_block.bass"        # 保管庫の保管期限の警告
+    success: "entity.experience_orb.pickup"       # 自分の操作が成功した
+    denied: "block.note_block.bass"               # 自分の操作が条件を満たさず弾かれた
+
 # 期限切れチェックの実行間隔(秒)
 expiration-check-interval-seconds: 60
 
@@ -91,6 +115,7 @@ messages:
     own-request: "&c自分の依頼は受注できません。"
     stars-too-low: "&cこの依頼を受注するには平均評価が★{min}以上必要です。"
     success: "&a依頼「{title}」を受注しました。"
+    notify-requester: "&a{worker}があなたの依頼「{title}」を受注しました。"
 
   giveup:
     success: "&e依頼「{title}」の受注を取り消しました。"
@@ -161,3 +186,17 @@ messages:
     cancelled: "&e依頼ID {id}「{title}」を強制終了しました。報酬{amount}を依頼者へ返還し、納品ボックスの中身は受注者へ返しました。"
     notify-requester: "&c依頼「{title}」は運営により強制終了され、報酬{amount}が返還されました。"
     notify-worker: "&c受注していた依頼「{title}」は運営により強制終了されました。納品ボックスの中身は保管庫へ返しました。"
+
+  # 通知と同時にアクションバーへ出す短い要約。空文字にするとその種類はアクションバーに出さない。
+  action-bar:
+    accepted: "&a{worker}が「{title}」を受注しました"
+    delivered: "&a{worker}が「{title}」の納品を報告しました &7- /irai my で承認"
+    approved: "&e「{title}」の報酬 {amount} を受け取りました"
+    auto-approved: "&e「{title}」は自動承認されました"
+    revision: "&6「{title}」が差し戻されました &7- やり直してください"
+    cancelled: "&c「{title}」の受注が取り消されました"
+    expired: "&7「{title}」が期限切れになりました"
+    returned: "&e「{title}」の納品物が保管庫に戻りました &7- /irai vault"
+    reminder: "&e「{title}」の対応期限が近づいています"
+    vault-warning: "&e保管庫のアイテムを確認してください &7- /irai vault"
+    queued: "&a依頼所からのお知らせが{count}件あります &7- チャットを確認"

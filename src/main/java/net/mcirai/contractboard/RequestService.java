@@ -15,6 +15,8 @@ import net.mcirai.contractboard.storage.RequestRepository;
 import net.mcirai.contractboard.storage.VaultRepository;
 import net.mcirai.contractboard.util.ItemSerialization;
 import net.mcirai.contractboard.util.MessageUtil;
+import net.mcirai.contractboard.util.Notifier;
+import net.mcirai.contractboard.util.NotifyTone;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -46,13 +48,14 @@ public class RequestService {
     private final NotificationRepository notificationRepository;
     private final EconomyService economyService;
     private final MessageUtil messages;
+    private final Notifier notifier;
     private final FileConfiguration config;
     private final Logger logger;
 
     public RequestService(RequestRepository requestRepository, RatingRepository ratingRepository,
                            DeliveryBoxRepository deliveryBoxRepository, VaultRepository vaultRepository,
                            NotificationRepository notificationRepository, EconomyService economyService,
-                           MessageUtil messages, FileConfiguration config, Logger logger) {
+                           MessageUtil messages, Notifier notifier, FileConfiguration config, Logger logger) {
         this.requestRepository = requestRepository;
         this.ratingRepository = ratingRepository;
         this.deliveryBoxRepository = deliveryBoxRepository;
@@ -60,6 +63,7 @@ public class RequestService {
         this.notificationRepository = notificationRepository;
         this.economyService = economyService;
         this.messages = messages;
+        this.notifier = notifier;
         this.config = config;
         this.logger = logger;
     }
@@ -84,6 +88,7 @@ public class RequestService {
                     "amount", economyService.format(total),
                     "reward", economyService.format(reward),
                     "fee", economyService.format(fee)));
+            notifier.play(requester, NotifyTone.DENIED);
             return false;
         }
         if (!economyService.withdraw(requester, total)) {
@@ -91,6 +96,7 @@ public class RequestService {
                     "amount", economyService.format(total),
                     "reward", economyService.format(reward),
                     "fee", economyService.format(fee)));
+            notifier.play(requester, NotifyTone.DENIED);
             return false;
         }
 
@@ -118,6 +124,7 @@ public class RequestService {
         placeholders.put("reward", economyService.format(reward));
         placeholders.put("fee", economyService.format(fee));
         messages.send(requester, "create.completed", placeholders);
+        notifier.play(requester, NotifyTone.SUCCESS);
         if (itemDelivery) {
             messages.send(requester, "box.created-with-delivery");
         }
@@ -128,10 +135,12 @@ public class RequestService {
         Request request = findOrNull(requestId);
         if (request == null || request.getStatus() != RequestStatus.OPEN) {
             messages.send(worker, "accept.already-taken");
+            notifier.play(worker, NotifyTone.DENIED);
             return;
         }
         if (request.getRequesterId().equals(worker.getUniqueId())) {
             messages.send(worker, "accept.own-request");
+            notifier.play(worker, NotifyTone.DENIED);
             return;
         }
         try {
@@ -139,6 +148,7 @@ public class RequestService {
                     && ratingRepository.averageStars(worker.getUniqueId()) < request.getMinStars()) {
                 messages.send(worker, "accept.stars-too-low",
                         Map.of("min", String.valueOf(request.getMinStars())));
+                notifier.play(worker, NotifyTone.DENIED);
                 return;
             }
         } catch (SQLException e) {
@@ -151,6 +161,7 @@ public class RequestService {
                     .anyMatch(r -> r.getStatus() == RequestStatus.ACCEPTED);
             if (hasActive) {
                 messages.send(worker, "accept.already-accepted-by-you");
+                notifier.play(worker, NotifyTone.DENIED);
                 return;
             }
             requestRepository.assignWorker(requestId, worker.getUniqueId(), worker.getName(),
@@ -160,9 +171,12 @@ public class RequestService {
             return;
         }
         messages.send(worker, "accept.success", Map.of("title", request.getTitle()));
+        notifier.play(worker, NotifyTone.SUCCESS);
         if (request.isItemDelivery()) {
             messages.send(worker, "box.accepted-with-delivery");
         }
+        notify(request.getRequesterId(), NotifyTone.ACCEPTED, "accept.notify-requester",
+                Map.of("title", request.getTitle(), "worker", worker.getName()));
     }
 
     public void giveUpRequest(Player worker, int requestId) {
@@ -187,11 +201,13 @@ public class RequestService {
         if (request == null || request.getStatus() != RequestStatus.ACCEPTED
                 || !worker.getUniqueId().equals(request.getWorkerId())) {
             messages.send(worker, "deliver.not-accepted");
+            notifier.play(worker, NotifyTone.DENIED);
             return;
         }
         closeOpenBoxes(requestId);
         if (request.isItemDelivery() && isBoxEmpty(requestId)) {
             messages.send(worker, "box.empty-on-deliver");
+            notifier.play(worker, NotifyTone.DENIED);
             return;
         }
         boolean success;
@@ -203,13 +219,15 @@ public class RequestService {
         }
         if (!success) {
             messages.send(worker, "deliver.not-accepted");
+            notifier.play(worker, NotifyTone.DENIED);
             return;
         }
         messages.send(worker, "deliver.success", Map.of("title", request.getTitle()));
+        notifier.play(worker, NotifyTone.SUCCESS);
         if (request.isItemDelivery()) {
             messages.send(worker, "box.locked");
         }
-        notify(request.getRequesterId(), "deliver.notify-requester",
+        notify(request.getRequesterId(), NotifyTone.DELIVERED, "deliver.notify-requester",
                 Map.of("title", request.getTitle(), "worker", worker.getName()));
     }
 
@@ -219,6 +237,7 @@ public class RequestService {
         if (request == null || request.getStatus() != RequestStatus.DELIVERED
                 || !requester.getUniqueId().equals(request.getRequesterId())) {
             messages.send(requester, "revision.not-delivered");
+            notifier.play(requester, NotifyTone.DENIED);
             return;
         }
         boolean success;
@@ -230,10 +249,11 @@ public class RequestService {
         }
         if (!success) {
             messages.send(requester, "revision.not-delivered");
+            notifier.play(requester, NotifyTone.DENIED);
             return;
         }
         messages.send(requester, "revision.success", Map.of("title", request.getTitle()));
-        notify(request.getWorkerId(), "revision.notify-worker", Map.of("title", request.getTitle()));
+        notify(request.getWorkerId(), NotifyTone.REVISION, "revision.notify-worker", Map.of("title", request.getTitle()));
     }
 
     public void forceRevert(Player requester, int requestId) {
@@ -254,11 +274,12 @@ public class RequestService {
         }
         if (!success) {
             messages.send(requester, "force-revert.not-eligible");
+            notifier.play(requester, NotifyTone.DENIED);
             return;
         }
         returnBoxToWorker(request, "force-revert");
         messages.send(requester, "force-revert.success", Map.of("title", request.getTitle()));
-        notify(request.getWorkerId(), "force-revert.notify-worker", Map.of("title", request.getTitle()));
+        notify(request.getWorkerId(), NotifyTone.CANCELLED, "force-revert.notify-worker", Map.of("title", request.getTitle()));
     }
 
     public boolean completeRequest(Player requester, int requestId, int stars) {
@@ -302,11 +323,12 @@ public class RequestService {
         placeholders.put("stars", String.valueOf(stars));
         messages.send(requester, "complete.approved", placeholders);
         messages.send(requester, "rate.success", placeholders);
+        notifier.play(requester, NotifyTone.SUCCESS);
         if (moved > 0) {
             messages.send(requester, "box.moved-to-vault", Map.of("count", String.valueOf(moved)));
             warnIfVaultCrowded(requester);
         }
-        notify(request.getWorkerId(), "complete.notify-worker", placeholders);
+        notify(request.getWorkerId(), NotifyTone.APPROVED, "complete.notify-worker", placeholders);
         return true;
     }
 
@@ -317,6 +339,7 @@ public class RequestService {
         }
         if (request.getStatus() != RequestStatus.OPEN) {
             messages.send(requester, "withdraw.already-accepted");
+            notifier.play(requester, NotifyTone.DENIED);
             return;
         }
         boolean statusUpdated;
@@ -329,6 +352,7 @@ public class RequestService {
         if (!statusUpdated) {
             // 既に他の操作で状態が変わっている(二重クリック等)。返金前なので何もせず終了する。
             messages.send(requester, "withdraw.already-accepted");
+            notifier.play(requester, NotifyTone.DENIED);
             return;
         }
         economyService.deposit(requester, request.getReward());
@@ -366,9 +390,9 @@ public class RequestService {
                 "title", request.getTitle(),
                 "amount", economyService.format(request.getReward()));
         messages.send(sender, "admin.cancelled", placeholders);
-        notify(request.getRequesterId(), "admin.notify-requester", placeholders);
+        notify(request.getRequesterId(), NotifyTone.CANCELLED, "admin.notify-requester", placeholders);
         if (request.getWorkerId() != null) {
-            notify(request.getWorkerId(), "admin.notify-worker", placeholders);
+            notify(request.getWorkerId(), NotifyTone.CANCELLED, "admin.notify-worker", placeholders);
         }
         return true;
     }
@@ -402,7 +426,7 @@ public class RequestService {
                 logger.warning("依頼ID " + request.getId() + " の期限切れ返還に失敗しました。管理者による手動対応が必要です。");
                 continue;
             }
-            notify(request.getRequesterId(), "expire.notify-requester", Map.of(
+            notify(request.getRequesterId(), NotifyTone.EXPIRED, "expire.notify-requester", Map.of(
                     "title", request.getTitle(),
                     "amount", economyService.format(request.getReward())));
         }
@@ -450,8 +474,9 @@ public class RequestService {
                     "title", request.getTitle(),
                     "amount", economyService.format(request.getReward()),
                     "worker", request.getWorkerName());
-            notify(request.getRequesterId(), "auto-approve.notify-requester", placeholders);
-            notify(request.getWorkerId(), "auto-approve.notify-worker", placeholders);
+            notify(request.getRequesterId(), NotifyTone.AUTO_APPROVED, "auto-approve.notify-requester",
+                    placeholders);
+            notify(request.getWorkerId(), NotifyTone.APPROVED, "auto-approve.notify-worker", placeholders);
         }
     }
 
@@ -465,7 +490,7 @@ public class RequestService {
         }
         int reminderHours = config.getInt("request.reminder-hours-before", 24);
         for (Request request : needingReminder) {
-            notify(request.getRequesterId(), "auto-approve.reminder-requester", Map.of(
+            notify(request.getRequesterId(), NotifyTone.REMINDER, "auto-approve.reminder-requester", Map.of(
                     "title", request.getTitle(), "hours", String.valueOf(reminderHours)));
             markReminderSentQuietly(request.getId());
         }
@@ -481,7 +506,7 @@ public class RequestService {
         }
         int reminderHours = config.getInt("request.reminder-hours-before", 24);
         for (Request request : needingReminder) {
-            notify(request.getWorkerId(), "force-revert.reminder-worker", Map.of(
+            notify(request.getWorkerId(), NotifyTone.REMINDER, "force-revert.reminder-worker", Map.of(
                     "title", request.getTitle(), "hours", String.valueOf(reminderHours)));
             markReminderSentQuietly(request.getId());
         }
@@ -536,7 +561,7 @@ public class RequestService {
             }
             logger.info("保管期限(" + retentionDays + "日)を過ぎた保管庫アイテムを削除しました(所有者: "
                     + item.getOwnerName() + " / 理由: " + item.getReason() + ")。");
-            notify(item.getOwnerUuid(), "vault.expired", Map.of(
+            notify(item.getOwnerUuid(), NotifyTone.VAULT_WARNING, "vault.expired", Map.of(
                     "reason", item.getReason(), "days", String.valueOf(retentionDays)));
         }
     }
@@ -550,7 +575,7 @@ public class RequestService {
             return;
         }
         for (VaultItem item : targets) {
-            notify(item.getOwnerUuid(), "vault.expiring", Map.of(
+            notify(item.getOwnerUuid(), NotifyTone.VAULT_WARNING, "vault.expiring", Map.of(
                     "reason", item.getReason(), "days", String.valueOf(daysLeft)));
             try {
                 vaultRepository.markWarned(item.getId(), stage);
@@ -659,7 +684,7 @@ public class RequestService {
         int moved = moveBoxToVault(request, request.getWorkerId(), workerName,
                 "依頼「" + request.getTitle() + "」の返却");
         if (moved > 0) {
-            notify(request.getWorkerId(), "box.returned", Map.of(
+            notify(request.getWorkerId(), NotifyTone.RETURNED, "box.returned", Map.of(
                     "title", request.getTitle(), "count", String.valueOf(moved)));
             logger.info("依頼ID " + request.getId() + " の納品ボックス" + moved + "件を受注者へ返却しました("
                     + context + ")。");
@@ -718,6 +743,7 @@ public class RequestService {
         if (leftover.isEmpty()) {
             deleteVaultItemQuietly(target.getId());
             messages.send(player, "vault.received", Map.of("item", displayNameOf(item)));
+            notifier.play(player, NotifyTone.SUCCESS);
             return;
         }
         ItemStack remaining = leftover.values().iterator().next();
@@ -728,6 +754,7 @@ public class RequestService {
             logger.log(Level.WARNING, "保管庫アイテムの更新に失敗しました", e);
         }
         messages.send(player, "vault.inventory-full");
+        notifier.play(player, NotifyTone.DENIED);
     }
 
     /** 保管庫が目安のスロット数を超えていれば取り出しを促す。取引自体は止めない。 */
@@ -782,6 +809,9 @@ public class RequestService {
         for (Notification notification : pending) {
             player.sendMessage(notification.getMessage());
         }
+        // 溜まっていた通知はログイン直後の他の表示に埋もれやすいので、件数だけ目立たせる
+        notifier.play(player, NotifyTone.REMINDER);
+        notifier.actionBar(player, "queued", Map.of("count", String.valueOf(pending.size())));
         try {
             notificationRepository.deleteByOwner(player.getUniqueId());
         } catch (SQLException e) {
@@ -790,7 +820,8 @@ public class RequestService {
         warnIfVaultCrowded(player);
     }
 
-    private void notify(UUID uuid, String messageKey, Map<String, String> placeholders) {
+    /** 相手への通知。オンラインならチャット・効果音・アクションバーで、オフラインなら次回ログイン時に届ける。 */
+    private void notify(UUID uuid, NotifyTone tone, String messageKey, Map<String, String> placeholders) {
         if (uuid == null) {
             return;
         }
@@ -798,6 +829,7 @@ public class RequestService {
         Player online = Bukkit.getPlayer(uuid);
         if (online != null) {
             online.sendMessage(text);
+            notifier.alert(online, tone, placeholders);
             return;
         }
         try {
