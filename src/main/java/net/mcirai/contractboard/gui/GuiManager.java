@@ -468,6 +468,83 @@ public class GuiManager {
                 .name("§c(データを復元できませんでした)").build());
     }
 
+    /**
+     * 取り下げ・ギブアップ・強制差し戻しの前に開く確認画面。
+     * 何が起きて何が戻らないのかを実行前に示し、誤クリックでの即時実行を防ぐ。
+     */
+    public void openConfirm(Player player, int requestId, int action) {
+        Request request;
+        try {
+            request = requestRepository.findById(requestId);
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "依頼の取得に失敗しました", e);
+            request = null;
+        }
+        if (request == null) {
+            openMyRequests(player);
+            return;
+        }
+
+        ConfirmHolder holder = new ConfirmHolder(requestId, action);
+        Inventory inventory = Bukkit.createInventory(holder, 27, messages.get("gui.confirm-title"));
+        holder.setInventory(inventory);
+
+        String actionName;
+        List<String> consequences = new ArrayList<>();
+        switch (action) {
+            case ACTION_WITHDRAW -> {
+                actionName = "依頼を取り下げる";
+                consequences.add("§f報酬" + economyService.format(request.getReward()) + "があなたへ返還されます");
+                consequences.add("§c作成時に支払った手数料は戻りません");
+            }
+            case ACTION_GIVE_UP -> {
+                actionName = "受注を取り消す(ギブアップ)";
+                consequences.add("§f依頼は募集中に戻り、他の人が受注できるようになります");
+                if (request.isItemDelivery()) {
+                    consequences.add("§f納品ボックスの中身はあなたの保管庫へ戻ります");
+                }
+            }
+            case ACTION_FORCE_REVERT -> {
+                actionName = "受注を強制的に取り消す";
+                consequences.add("§f" + request.getWorkerName() + "の受注を取り消し、募集中に戻します");
+                if (request.isItemDelivery()) {
+                    consequences.add("§f納品ボックスの中身は受注者の保管庫へ戻ります");
+                }
+            }
+            default -> {
+                openMyRequests(player);
+                return;
+            }
+        }
+
+        List<String> infoLore = new ArrayList<>();
+        infoLore.add("§7報酬: §e" + economyService.format(request.getReward()));
+        infoLore.add("§7状態: §f" + statusLabel(request.getStatus()));
+        if (request.getWorkerName() != null) {
+            infoLore.add("§7受注者: §f" + request.getWorkerName());
+        }
+        infoLore.add("");
+        infoLore.addAll(consequences);
+        inventory.setItem(ConfirmHolder.SLOT_INFO, new ItemBuilder(Material.PAPER)
+                .name("§f" + request.getTitle())
+                .lore(infoLore)
+                .build());
+
+        List<String> confirmLore = new ArrayList<>(consequences);
+        confirmLore.add("");
+        confirmLore.add("§7この操作は取り消せません");
+        inventory.setItem(ConfirmHolder.SLOT_CONFIRM, new ItemBuilder(Material.LIME_WOOL)
+                .name("§a" + actionName)
+                .lore(confirmLore)
+                .build());
+        inventory.setItem(ConfirmHolder.SLOT_CANCEL, new ItemBuilder(Material.RED_WOOL)
+                .name("§cやめる")
+                .lore("§7何もせずに自分の依頼へ戻る")
+                .build());
+
+        player.openInventory(inventory);
+    }
+
     public void openRating(Player player, int requestId) {
         RatingHolder holder = new RatingHolder(requestId);
         Inventory inventory = Bukkit.createInventory(holder, 27, messages.get("gui.rate-title"));

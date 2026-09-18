@@ -82,6 +82,7 @@ messages:
     my-requests-title: "自分の依頼"
     my-accepted-title: "受注中の依頼"
     rate-title: "評価する"
+    confirm-title: "確認"
     box-title: "納品ボックス"
     box-view-title: "納品ボックス(閲覧)"
     vault-title: "保管庫"

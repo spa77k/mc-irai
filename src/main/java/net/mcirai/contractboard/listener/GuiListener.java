@@ -1,6 +1,7 @@
 package net.mcirai.contractboard.listener;
 
 import net.mcirai.contractboard.RequestService;
+import net.mcirai.contractboard.gui.ConfirmHolder;
 import net.mcirai.contractboard.gui.DeliveryBoxHolder;
 import net.mcirai.contractboard.gui.GuiManager;
 import net.mcirai.contractboard.gui.MainMenuHolder;
@@ -63,7 +64,8 @@ public class GuiListener implements Listener {
 
         if (!(holder instanceof MainMenuHolder) && !(holder instanceof RequestListHolder)
                 && !(holder instanceof RequestDetailHolder) && !(holder instanceof MyRequestsHolder)
-                && !(holder instanceof RatingHolder) && !(holder instanceof VaultHolder)) {
+                && !(holder instanceof RatingHolder) && !(holder instanceof VaultHolder)
+                && !(holder instanceof ConfirmHolder)) {
             return;
         }
         event.setCancelled(true);
@@ -84,6 +86,8 @@ public class GuiListener implements Listener {
             handleRating(player, ratingHolder, slot);
         } else if (holder instanceof VaultHolder vaultHolder) {
             handleVault(player, vaultHolder, slot);
+        } else if (holder instanceof ConfirmHolder confirmHolder) {
+            handleConfirm(player, confirmHolder, slot);
         }
     }
 
@@ -247,20 +251,11 @@ public class GuiListener implements Listener {
         int action = data[1];
         switch (action) {
             case GuiManager.ACTION_APPROVE -> guiManager.openRating(player, requestId);
-            case GuiManager.ACTION_WITHDRAW -> {
-                requestService.withdrawRequest(player, requestId);
-                guiManager.openMyRequests(player);
-            }
-            case GuiManager.ACTION_GIVE_UP -> {
-                requestService.giveUpRequest(player, requestId);
-                guiManager.openMyRequests(player);
-            }
+            // 取り消せない操作は確認画面を挟む
+            case GuiManager.ACTION_WITHDRAW, GuiManager.ACTION_GIVE_UP, GuiManager.ACTION_FORCE_REVERT ->
+                    guiManager.openConfirm(player, requestId, action);
             case GuiManager.ACTION_DELIVER -> {
                 requestService.markDelivered(player, requestId);
-                guiManager.openMyRequests(player);
-            }
-            case GuiManager.ACTION_FORCE_REVERT -> {
-                requestService.forceRevert(player, requestId);
                 guiManager.openMyRequests(player);
             }
             case GuiManager.ACTION_REVISION -> {
@@ -306,6 +301,25 @@ public class GuiListener implements Listener {
             requestService.receiveVaultItem(player, vaultId);
             guiManager.openVault(player, holder.getPage());
         }
+    }
+
+    private void handleConfirm(Player player, ConfirmHolder holder, int slot) {
+        if (slot == ConfirmHolder.SLOT_CANCEL) {
+            guiManager.openMyRequests(player);
+            return;
+        }
+        if (slot != ConfirmHolder.SLOT_CONFIRM) {
+            return;
+        }
+        int requestId = holder.getRequestId();
+        switch (holder.getAction()) {
+            case GuiManager.ACTION_WITHDRAW -> requestService.withdrawRequest(player, requestId);
+            case GuiManager.ACTION_GIVE_UP -> requestService.giveUpRequest(player, requestId);
+            case GuiManager.ACTION_FORCE_REVERT -> requestService.forceRevert(player, requestId);
+            default -> {
+            }
+        }
+        guiManager.openMyRequests(player);
     }
 
     private void handleRating(Player player, RatingHolder holder, int slot) {
