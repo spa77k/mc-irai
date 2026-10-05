@@ -72,7 +72,7 @@ messages:
   prefix: "&a[依頼所] &r"
   no-permission: "&cこの操作を行う権限がありません。"
   player-only: "&cこのコマンドはプレイヤーのみ実行できます。"
-  unknown-subcommand: "&c不明なサブコマンドです。/irai [create|list|my|vault|cancel]"
+  unknown-subcommand: "&cそのコマンドは使えません。使い方: /irai [create|list|my|vault|cancel]"
   economy-not-found: "&c経済プラグイン(Vault)が見つかりません。管理者に連絡してください。"
 
   gui:
