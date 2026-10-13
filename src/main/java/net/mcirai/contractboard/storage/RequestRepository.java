@@ -121,11 +121,11 @@ public class RequestRepository {
         return result;
     }
 
-    public void assignWorker(int id, UUID workerId, String workerName, long acceptedAt) throws SQLException {
+    public boolean assignWorker(int id, UUID workerId, String workerName, long acceptedAt) throws SQLException {
         String sql = """
             UPDATE requests SET worker_id = ?, worker_name = ?, status = ?,
                 accepted_at = ?, delivered_at = NULL, reminder_sent = 0
-            WHERE id = ?
+            WHERE id = ? AND status = 'OPEN' AND expires_at > ?
             """;
         try (PreparedStatement statement = database.getConnection().prepareStatement(sql)) {
             statement.setString(1, workerId.toString());
@@ -133,7 +133,8 @@ public class RequestRepository {
             statement.setString(3, RequestStatus.ACCEPTED.name());
             statement.setLong(4, acceptedAt);
             statement.setInt(5, id);
-            statement.executeUpdate();
+            statement.setLong(6, acceptedAt);
+            return statement.executeUpdate() == 1;
         }
     }
 

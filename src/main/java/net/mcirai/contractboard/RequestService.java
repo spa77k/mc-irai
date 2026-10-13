@@ -164,8 +164,12 @@ public class RequestService {
                 notifier.play(worker, NotifyTone.DENIED);
                 return;
             }
-            requestRepository.assignWorker(requestId, worker.getUniqueId(), worker.getName(),
-                    System.currentTimeMillis());
+            if (!requestRepository.assignWorker(requestId, worker.getUniqueId(), worker.getName(),
+                    System.currentTimeMillis())) {
+                messages.send(worker, "accept.already-taken");
+                notifier.play(worker, NotifyTone.DENIED);
+                return;
+            }
         } catch (SQLException e) {
             logger.log(Level.WARNING, "依頼の受注に失敗しました", e);
             return;
@@ -177,6 +181,53 @@ public class RequestService {
         }
         notify(request.getRequesterId(), NotifyTone.ACCEPTED, "accept.notify-requester",
                 Map.of("title", request.getTitle(), "worker", worker.getName()));
+    }
+
+    /** Discord 連携済みの本人による受諾。Paper のメインスレッドから呼ぶ。 */
+    public String acceptExternal(UUID workerId, String workerName, int requestId) {
+        Request request = findOrNull(requestId);
+        if (request == null || request.getStatus() != RequestStatus.OPEN
+                || request.getExpiresAt() <= System.currentTimeMillis()) {
+            return "この依頼は募集を終了しました。";
+        }
+        if (request.getRequesterId().equals(workerId)) {
+            return "自分の依頼は受諾できません。";
+        }
+        try {
+            if (request.getMinStars() > 0 && ratingRepository.countByRated(workerId) > 0
+                    && ratingRepository.averageStars(workerId) < request.getMinStars()) {
+                return "この依頼に必要な評価が足りません。";
+            }
+            boolean hasActive = requestRepository.findByWorker(workerId).stream()
+                    .anyMatch(r -> r.getStatus() == RequestStatus.ACCEPTED);
+            if (hasActive) {
+                return "すでに別の依頼を受諾しています。";
+            }
+            if (!requestRepository.assignWorker(requestId, workerId, workerName, System.currentTimeMillis())) {
+                return "この依頼は募集を終了しました。";
+            }
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "Discordからの依頼受諾に失敗しました", e);
+            return "依頼の受諾に失敗しました。";
+        }
+        notify(request.getRequesterId(), NotifyTone.ACCEPTED, "accept.notify-requester",
+                Map.of("title", request.getTitle(), "worker", workerName));
+        Player online = Bukkit.getPlayer(workerId);
+        if (online != null) {
+            messages.send(online, "accept.success", Map.of("title", request.getTitle()));
+            if (request.isItemDelivery()) messages.send(online, "box.accepted-with-delivery");
+        }
+        return "依頼「" + request.getTitle() + "」を受諾しました。";
+    }
+
+    public List<Request> findOpenRequests() {
+        try {
+            return requestRepository.findByStatus(RequestStatus.OPEN).stream()
+                    .filter(request -> request.getExpiresAt() > System.currentTimeMillis()).toList();
+        } catch (SQLException e) {
+            logger.log(Level.WARNING, "依頼一覧の取得に失敗しました", e);
+            return List.of();
+        }
     }
 
     public void giveUpRequest(Player worker, int requestId) {

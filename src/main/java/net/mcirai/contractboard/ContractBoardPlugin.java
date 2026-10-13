@@ -26,6 +26,7 @@ import java.sql.SQLException;
 public class ContractBoardPlugin extends JavaPlugin {
 
     private Database database;
+    private RequestService requestService;
 
     @Override
     public void onEnable() {
@@ -56,7 +57,7 @@ public class ContractBoardPlugin extends JavaPlugin {
             getLogger().warning("Vault経済プラグインが見つかりません。依頼の作成・支払いが機能しません。");
         }
 
-        RequestService requestService = new RequestService(requestRepository, ratingRepository,
+        requestService = new RequestService(requestRepository, ratingRepository,
                 deliveryBoxRepository, vaultRepository, notificationRepository,
                 economyService, messages, notifier, getConfig(), getLogger());
         GuiManager guiManager = new GuiManager(requestRepository, ratingRepository, requestService,
@@ -91,5 +92,21 @@ public class ContractBoardPlugin extends JavaPlugin {
         if (database != null) {
             database.close();
         }
+    }
+
+    /** 他プラグインとの連携用。戻り値は JDK の型だけにする。 */
+    public java.util.List<java.util.Map<String, String>> discordOpenRequests() {
+        return requestService.findOpenRequests().stream().map(request -> java.util.Map.of(
+                "id", String.valueOf(request.getId()), "title", request.getTitle(),
+                "description", request.getDescription(), "reward",
+                java.math.BigDecimal.valueOf(request.getReward()).stripTrailingZeros().toPlainString(),
+                "expires", String.valueOf(request.getExpiresAt()),
+                "requester", request.getRequesterName(),
+                "minStars", String.valueOf(request.getMinStars()),
+                "itemDelivery", String.valueOf(request.isItemDelivery()))).toList();
+    }
+
+    public String discordAccept(java.util.UUID playerId, String playerName, int requestId) {
+        return requestService.acceptExternal(playerId, playerName, requestId);
     }
 }
